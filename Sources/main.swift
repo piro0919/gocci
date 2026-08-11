@@ -67,16 +67,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         refresh()
 
-        // メニューを押さずに動きを確かめるための入口
-        if CommandLine.arguments.contains("--mount") {
-            mount.mount()
-            return
+        // 外付けを挿した瞬間に繋ぐ。5秒の見回りでも拾えるが、待たされた感じになる
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didMountNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.mount.mountWhenReady()
         }
 
         // マウント先が決まっていなければ、まず設定を出す。初回はここに来る
         if Settings.mountPoint.isEmpty || CommandLine.arguments.contains("--settings") {
             openSettings()
+            return
         }
+
+        // 普段はメニューを触らずに繋がる。外付けがまだなら、繋がるまで待つ
+        mount.mountWhenReady()
     }
 
     /// 繋がったまま終了すると、次に Finder から触ったときに固まる。降りる前に外す
@@ -150,7 +155,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .mounted:
             toggleItem.title = L.disconnect
             toggleItem.isEnabled = true
-        case .unmounted, .failed:
+        case .unmounted, .waitingForDisk, .failed:
+            // 待っている間も押せる。外付けを繋いだ直後に、5秒の見回りを待たず繋げるように
             toggleItem.title = L.connect
             toggleItem.isEnabled = !Settings.mountPoint.isEmpty
         case .mounting, .unmounting:
@@ -183,6 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .mounting: return L.mounting
         case .unmounting: return L.unmounting
         case .unmounted: return L.unmounted
+        case .waitingForDisk: return L.waitingForDisk
         case .failed(let reason): return "\(L.failed): \(reason)"
         }
     }
@@ -190,7 +197,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func color(for state: MountState) -> NSColor {
         switch state {
         case .mounted: return .systemGreen
-        case .mounting, .unmounting: return .systemYellow
+        case .mounting, .unmounting, .waitingForDisk: return .systemYellow
         case .unmounted: return .tertiaryLabelColor
         case .failed: return .systemRed
         }

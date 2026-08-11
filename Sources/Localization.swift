@@ -39,6 +39,9 @@ enum L {
     static var mounting: String { t("接続しています…", "Connecting…") }
     static var unmounting: String { t("切っています…", "Disconnecting…") }
     static var unmounted: String { t("未接続", "Not connected") }
+    static var waitingForDisk: String {
+        t("外付けを待っています…", "Waiting for the disk…")
+    }
     static var failed: String { t("エラー", "Error") }
     static var mountPointUnset: String { t("マウント先が未設定です", "No mount point set") }
     static var openInFinder: String { t("Finder で開く", "Open in Finder") }

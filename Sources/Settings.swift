@@ -50,6 +50,15 @@ enum Settings {
         return fallback?.appendingPathComponent("io.kkweb.gocci").path ?? NSTemporaryDirectory()
     }
 
+    /// マウント先を置く場所が今あるか。外付けが繋がっていなければ `/Volumes/HIKSEMI` ごと無い。
+    /// マウント先そのものは、こちらで作るので無くて構わない
+    static var mountPointParentExists: Bool {
+        let path = (mountPoint as NSString).standardizingPath
+        guard !path.isEmpty else { return false }
+        let parent = (path as NSString).deletingLastPathComponent
+        return !parent.isEmpty && FileManager.default.fileExists(atPath: parent)
+    }
+
     /// マウント先が載っているディスクの一番上。`/Volumes/HIKSEMI/GoogleDrive` なら `/Volumes/HIKSEMI`。
     /// マウント先自体はまだ存在しないことがあるので、遡って実在する親から調べる
     private static func volumeRoot(of path: String) -> String? {

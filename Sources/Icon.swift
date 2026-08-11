@@ -13,7 +13,7 @@ enum Icon {
             names = ["externaldrive.fill.badge.icloud", "externaldrive.badge.icloud", "icloud.fill"]
         case .mounting, .unmounting:
             names = ["externaldrive.badge.timemachine", "externaldrive", "icloud"]
-        case .unmounted:
+        case .unmounted, .waitingForDisk:
             names = ["externaldrive", "icloud"]
         case .failed:
             names = [

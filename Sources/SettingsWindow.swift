@@ -13,6 +13,8 @@ final class SettingsWindowController: NSWindowController {
         checkboxWithTitle: L.launchAtLogin, target: nil, action: nil)
     private let languagePopUp = NSPopUpButton()
     private let messageLabel = NSTextField(labelWithString: "")
+    /// 一度でも開いたか。入力欄に今の値が入っているかの判断に使う
+    private var hasShown = false
 
     convenience init() {
         let window = NSWindow(
@@ -122,6 +124,7 @@ final class SettingsWindowController: NSWindowController {
         remoteField.stringValue = Settings.remote
         launchCheckbox.state = Settings.launchesAtLogin ? .on : .off
         report("")
+        hasShown = true
 
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
@@ -129,8 +132,13 @@ final class SettingsWindowController: NSWindowController {
         window?.makeKeyAndOrderFront(nil)
     }
 
-    /// 入力欄は Enter か、窓を閉じたときに保存する
+    /// 入力欄は Enter か、窓を閉じたときに保存する。
+    ///
+    /// 一度も開いていないときは書かない。窓は起動時に作るだけ作ってあるので、
+    /// この番をしないと、終了時の閉じる通知で空欄が設定を上書きする
     @objc private func commitFields() {
+        guard hasShown else { return }
+
         if mountPointField.stringValue != Settings.mountPoint {
             Settings.mountPoint = mountPointField.stringValue
         }

@@ -12,6 +12,8 @@ import Foundation
 
 enum MountState: Equatable {
     case unmounted
+    /// マウント先を置くディスクがまだ繋がっていない。繋がるのを待っている
+    case waitingForDisk
     case mounting
     case unmounting
     case mounted
@@ -58,10 +60,33 @@ final class MountController {
         return FileManager.default.isExecutableFile(atPath: url.path) ? url.path : nil
     }
 
+    // MARK: - 外付けを待つ
+
+    /// ログイン直後は、外付けが繋がるより先にこちらが起きていることがある。
+    /// 場所ができるまで待ってからマウントする
+    func mountWhenReady() {
+        guard state == .unmounted || state == .waitingForDisk || isFailed(state) else { return }
+        guard !Settings.mountPoint.isEmpty else { return }
+
+        if Settings.mountPointParentExists {
+            mount()
+            return
+        }
+        if state != .waitingForDisk {
+            waitStartedAt = Date()
+            state = .waitingForDisk
+        }
+    }
+
+    /// 待ちを諦めるまで。これを過ぎたら未接続に戻し、メニューから繋ぎ直してもらう。
+    /// 待ち続けても害は無いが、状態表示が「待っています」のまま居座るのは分かりにくい
+    private static let waitLimit: TimeInterval = 30 * 60
+    private var waitStartedAt: Date?
+
     // MARK: - マウント
 
     func mount() {
-        guard state == .unmounted || isFailed(state) else { return }
+        guard state == .unmounted || state == .waitingForDisk || isFailed(state) else { return }
 
         let mountPoint = (Settings.mountPoint as NSString).standardizingPath
         guard !mountPoint.isEmpty else {
@@ -224,7 +249,7 @@ final class MountController {
             case .mounting, .mounted:
                 // 頼んでいないのに終わった
                 self.state = .failed(L.mountFailed(self.lastLogLine()))
-            case .unmounting, .unmounted, .failed:
+            case .unmounting, .unmounted, .waitingForDisk, .failed:
                 break
             }
         }
@@ -232,6 +257,17 @@ final class MountController {
 
     /// 外から状態が変わることがある。外付けを抜かれた、別のアプリに外された、など
     func refresh() {
+        if state == .waitingForDisk {
+            if Settings.mountPointParentExists {
+                mount()
+            } else if let started = waitStartedAt,
+                Date().timeIntervalSince(started) > Self.waitLimit
+            {
+                state = .unmounted
+            }
+            return
+        }
+
         guard state == .mounted || state == .unmounted else { return }
         let mounted = Mounts.isMounted(Settings.mountPoint)
         if mounted, state == .unmounted { state = .mounted }
