@@ -1,5 +1,10 @@
 import Darwin
 import Foundation
+import OSLog
+
+/// 落ちた・繋ぎ直したといった出来事は、後から追えないと直しようがない。
+/// `log show --predicate 'subsystem == "io.kkweb.gocci"' --last 10m` で読める
+let logger = Logger(subsystem: "io.kkweb.gocci", category: "mount")
 
 // rclone の起動と停止。
 //
@@ -14,6 +19,8 @@ enum MountState: Equatable {
     case unmounted
     /// マウント先を置くディスクがまだ繋がっていない。繋がるのを待っている
     case waitingForDisk
+    /// rclone が勝手に落ちた。少し置いてから自分で繋ぎ直す
+    case reconnecting
     case mounting
     case unmounting
     case mounted
@@ -27,8 +34,11 @@ extension Notification.Name {
 final class MountController {
     static let shared = MountController()
 
-    /// マウントが表に載るまで待つ上限。手元では 1 秒前後で載る
-    private static let mountTimeout: TimeInterval = 30
+    /// マウントが表に載るまで待つ上限。
+    ///
+    /// 手元では 5 秒から 30 秒までばらついた。rclone は NFS サーバーを上げる前に Drive の
+    /// 認証を通すので、そこの機嫌に引きずられる。短く切ると、繋がる寸前で諦めることになる
+    private static let mountTimeout: TimeInterval = 120
     /// アンマウントを待つ上限
     private static let unmountTimeout: TimeInterval = 15
     private static let pollInterval: TimeInterval = 0.3
@@ -36,6 +46,11 @@ final class MountController {
     private(set) var state: MountState = .unmounted {
         didSet {
             guard state != oldValue else { return }
+            logger.info(
+                """
+                状態: \(String(describing: oldValue), privacy: .public) \
+                → \(String(describing: self.state), privacy: .public)
+                """)
             NotificationCenter.default.post(name: .mountStateChanged, object: nil)
         }
     }
@@ -86,7 +101,10 @@ final class MountController {
     // MARK: - マウント
 
     func mount() {
-        guard state == .unmounted || state == .waitingForDisk || isFailed(state) else { return }
+        guard
+            state == .unmounted || state == .waitingForDisk || state == .reconnecting
+                || isFailed(state)
+        else { return }
 
         let mountPoint = (Settings.mountPoint as NSString).standardizingPath
         guard !mountPoint.isEmpty else {
@@ -104,6 +122,14 @@ final class MountController {
             return
         }
 
+        // 置き場所ごと無いときは待ちに回す。ここで作りにいくと、抜けている外付けの代わりに
+        // 内蔵ディスクへ `/Volumes/HIKSEMI` を作ってしまい、そこへマウントすることになる
+        guard Settings.mountPointParentExists else {
+            waitStartedAt = Date()
+            state = .waitingForDisk
+            return
+        }
+
         let cacheDir = Settings.resolvedCacheDir
         let remote = Settings.remote
         state = .mounting
@@ -114,11 +140,11 @@ final class MountController {
     }
 
     private func launch(rclone: String, remote: String, mountPoint: String, cacheDir: String) {
+        // 途中の道は作らない。外付けが抜けている隙に、内蔵へその場しのぎの入れ物を
+        // 作ってしまうのを防ぐ。作るのはマウント先とキャッシュ先そのものだけ
         do {
-            try FileManager.default.createDirectory(
-                atPath: mountPoint, withIntermediateDirectories: true)
-            try FileManager.default.createDirectory(
-                atPath: cacheDir, withIntermediateDirectories: true)
+            try createDirectoryIfNeeded(mountPoint)
+            try createDirectoryIfNeeded(cacheDir)
         } catch {
             finish(.failed(error.localizedDescription))
             return
@@ -176,6 +202,28 @@ final class MountController {
         finish(.failed(L.mountTimedOut))
     }
 
+    private func createDirectoryIfNeeded(_ path: String) throws {
+        guard !FileManager.default.fileExists(atPath: path) else { return }
+        try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: false)
+    }
+
+    // MARK: - メニューからの操作
+
+    /// 人が押したときの入口。自動で繋ぎ直した回数はここで数え直す。
+    /// 手で繋ぎ直したなら、それまでの失敗は引きずらない
+    func toggleByUser() {
+        restarts.removeAll()
+
+        switch state {
+        case .mounted:
+            unmount()
+        case .unmounted, .waitingForDisk, .reconnecting, .failed:
+            mount()
+        case .mounting, .unmounting:
+            break
+        }
+    }
+
     // MARK: - アンマウント
 
     func unmount() {
@@ -204,14 +252,32 @@ final class MountController {
             finish(.unmounted)
             return
         }
-        if run("/usr/sbin/diskutil", ["unmount", "force", mountPoint]),
-            waitUntilUnmounted(mountPoint)
-        {
+        if forceUnmount(mountPoint) {
             finish(.unmounted)
             return
         }
 
         finish(.failed(L.unmountFailed(lastLogLine())))
+    }
+
+    /// 強制的に外す。
+    ///
+    /// 手立ては `umount -f` だけ。他は使えないことを手元で確かめた。
+    ///
+    /// - `diskutil unmount force` — 相手の居ない NFS に投げると、こちらから殺せない状態のまま
+    ///   戻ってこなくなる
+    /// - DiskArbitration（`DADiskUnmount`）— 同じ場面でアプリのプロセスごと固まる
+    ///
+    /// その `umount -f` も、外付けの上のマウントに対してはアプリから叩くと
+    /// `Operation not permitted` で弾かれる。同じ道具がターミナルからは通るので、権限の違い。
+    /// 外せなかったことは呼び出し元へ返し、人に頼む
+    private func forceUnmount(_ mountPoint: String) -> Bool {
+        for attempt in 0..<3 {
+            if attempt > 0 { Thread.sleep(forTimeInterval: 1) }
+            run("/sbin/umount", ["-f", mountPoint])
+            if !Mounts.isMounted(mountPoint) { return true }
+        }
+        return false
     }
 
     private func waitUntilUnmounted(_ mountPoint: String) -> Bool {
@@ -223,20 +289,47 @@ final class MountController {
         return false
     }
 
+    /// 外部の道具を呼ぶ。返ってこないものがあるので、待つ時間に上限を置く。
+    /// 上限まで待ったら諦めて失敗として返す。ここで止まると、以降の操作を全部道連れにする
     @discardableResult
-    private func run(_ path: String, _ arguments: [String]) -> Bool {
+    private func run(_ path: String, _ arguments: [String], timeout: TimeInterval = 10) -> Bool {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: path)
         task.arguments = arguments
-        task.standardOutput = FileHandle.nullDevice
-        task.standardError = FileHandle.nullDevice
+
+        // 失敗したときに理由が要る。umount の「なぜ外せないか」は本人しか知らない
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+
         do {
             try task.run()
-            task.waitUntilExit()
-            return task.terminationStatus == 0
         } catch {
+            logger.error("\(path, privacy: .public) を起動できなかった: \(error.localizedDescription, privacy: .public)")
             return false
         }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while task.isRunning, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        guard !task.isRunning else {
+            logger.error("\(path, privacy: .public) が \(Int(timeout)) 秒で返らなかった")
+            task.terminate()
+            return false
+        }
+
+        let output =
+            String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if task.terminationStatus != 0 {
+            logger.error(
+                """
+                \(path, privacy: .public) \(arguments.joined(separator: " "), privacy: .public) \
+                が失敗した（\(task.terminationStatus)）: \(output, privacy: .public)
+                """)
+        }
+        return task.terminationStatus == 0
     }
 
     // MARK: - 状態
@@ -244,15 +337,84 @@ final class MountController {
     /// rclone が終わった。こちらが止めたのか、勝手に落ちたのかを分ける
     private func processDidExit() {
         process = nil
+
+        logLock.lock()
+        let tail = log
+        logLock.unlock()
+        logger.info("rclone が終了した。出力:\n\(tail, privacy: .public)")
         DispatchQueue.main.async {
             switch self.state {
-            case .mounting, .mounted:
-                // 頼んでいないのに終わった
+            case .mounted:
+                // 繋がっていたものが落ちた。繋ぎ直しにいく
+                self.recover()
+            case .mounting:
+                // そもそも上がらなかった。設定か認証の問題なので、繰り返しても同じ
                 self.state = .failed(L.mountFailed(self.lastLogLine()))
-            case .unmounting, .unmounted, .waitingForDisk, .failed:
+            case .unmounting, .unmounted, .waitingForDisk, .reconnecting, .failed:
                 break
             }
         }
+    }
+
+    // MARK: - 落ちたときの繋ぎ直し
+
+    /// 自分で繋ぎ直す回数の上限と、数え直すまでの間隔。
+    /// 直せる類の不調は数回で直る。直らないものは何回やっても直らず、その間 Drive を叩き続ける
+    private static let restartLimit = 3
+    private static let restartWindow: TimeInterval = 10 * 60
+    /// 落ちてから繋ぎ直すまで。回を追うごとに間を空ける
+    private static let restartDelays: [TimeInterval] = [2, 5, 15]
+    private var restarts: [Date] = []
+
+    private func recover() {
+        // 外付けごと消えたのなら、落ちたのではなく抜かれた。繋ぎ直さずに、挿し直されるのを待つ
+        guard Settings.mountPointParentExists else {
+            waitStartedAt = Date()
+            state = .waitingForDisk
+            return
+        }
+
+        let now = Date()
+        restarts = restarts.filter { now.timeIntervalSince($0) < Self.restartWindow }
+        guard restarts.count < Self.restartLimit else {
+            state = .failed(L.restartGaveUp(lastLogLine()))
+            return
+        }
+
+        let delay = Self.restartDelays[min(restarts.count, Self.restartDelays.count - 1)]
+        let mountPoint = (Settings.mountPoint as NSString).standardizingPath
+        restarts.append(now)
+        state = .reconnecting
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            // この間に人が触っていたら、そちらを優先する
+            guard let self, self.state == .reconnecting else { return }
+
+            self.queue.async {
+                // rclone が死んでもマウント表の項目は残る。応答しない抜け殻なのに statfs では
+                // 繋がって見えるので、繋ぎ直す前にこちらで外す。
+                // 外せないまま進むと、抜け殻を見て「繋がっている」と誤って報せることになる
+                if Mounts.isMounted(mountPoint) {
+                    logger.info("抜け殻のマウントを外す: \(mountPoint, privacy: .public)")
+                    guard self.clearStaleMount(mountPoint) else {
+                        logger.error("抜け殻のマウントを外せなかった")
+                        self.finish(.failed(L.staleMountStuck(mountPoint)))
+                        return
+                    }
+                }
+
+                DispatchQueue.main.async {
+                    guard self.state == .reconnecting else { return }
+                    self.mount()
+                }
+            }
+        }
+    }
+
+    /// 応答しないマウントを外す。相手が死んでいるので、待つ形の umount は返ってこない。強制で外す
+    @discardableResult
+    private func clearStaleMount(_ mountPoint: String) -> Bool {
+        forceUnmount(mountPoint)
     }
 
     /// 外から状態が変わることがある。外付けを抜かれた、別のアプリに外された、など
@@ -298,8 +460,13 @@ final class MountController {
         let text = log
         logLock.unlock()
 
-        // rclone の行は「2026/08/12 07:25:46 ERROR : …」の形。時刻は見せても仕方がないので落とす
-        let line = text.split(separator: "\n").last.map(String.init) ?? ""
+        let lines = text.split(separator: "\n").map(String.init)
+        // 失敗の理由として読ませたいのは不具合の行。rclone は常用の client_id について
+        // NOTICE を出すので、素直に末尾を採ると毎回それが理由として出てしまう
+        let line =
+            lines.last(where: { $0.contains("ERROR") || $0.contains("CRITICAL") })
+            ?? lines.last(where: { !$0.contains("NOTICE") })
+            ?? lines.last ?? ""
         let parts = line.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
         if parts.count == 3, parts[0].contains("/"), parts[1].contains(":") {
             return String(parts[2])

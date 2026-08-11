@@ -11,7 +11,7 @@ enum Icon {
         switch state {
         case .mounted:
             names = ["externaldrive.fill.badge.icloud", "externaldrive.badge.icloud", "icloud.fill"]
-        case .mounting, .unmounting:
+        case .mounting, .unmounting, .reconnecting:
             names = ["externaldrive.badge.timemachine", "externaldrive", "icloud"]
         case .unmounted, .waitingForDisk:
             names = ["externaldrive", "icloud"]

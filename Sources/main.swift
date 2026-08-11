@@ -155,7 +155,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .mounted:
             toggleItem.title = L.disconnect
             toggleItem.isEnabled = true
-        case .unmounted, .waitingForDisk, .failed:
+        case .unmounted, .waitingForDisk, .reconnecting, .failed:
             // 待っている間も押せる。外付けを繋いだ直後に、5秒の見回りを待たず繋げるように
             toggleItem.title = L.connect
             toggleItem.isEnabled = !Settings.mountPoint.isEmpty
@@ -190,6 +190,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .unmounting: return L.unmounting
         case .unmounted: return L.unmounted
         case .waitingForDisk: return L.waitingForDisk
+        case .reconnecting: return L.reconnecting
         case .failed(let reason): return "\(L.failed): \(reason)"
         }
     }
@@ -197,7 +198,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func color(for state: MountState) -> NSColor {
         switch state {
         case .mounted: return .systemGreen
-        case .mounting, .unmounting, .waitingForDisk: return .systemYellow
+        case .mounting, .unmounting, .waitingForDisk, .reconnecting: return .systemYellow
         case .unmounted: return .tertiaryLabelColor
         case .failed: return .systemRed
         }
@@ -216,11 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - 操作
 
     @objc private func toggleMount() {
-        if mount.state == .mounted {
-            mount.unmount()
-        } else {
-            mount.mount()
-        }
+        mount.toggleByUser()
     }
 
     @objc private func openInFinder() {

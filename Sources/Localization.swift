@@ -42,6 +42,7 @@ enum L {
     static var waitingForDisk: String {
         t("外付けを待っています…", "Waiting for the disk…")
     }
+    static var reconnecting: String { t("繋ぎ直しています…", "Reconnecting…") }
     static var failed: String { t("エラー", "Error") }
     static var mountPointUnset: String { t("マウント先が未設定です", "No mount point set") }
     static var openInFinder: String { t("Finder で開く", "Open in Finder") }
@@ -75,8 +76,18 @@ enum L {
     static func mountFailed(_ reason: String) -> String {
         reason.isEmpty ? t("マウントできませんでした", "Could not mount") : reason
     }
+    static func restartGaveUp(_ reason: String) -> String {
+        let head = t("繋ぎ直せませんでした", "Could not stay connected")
+        return reason.isEmpty ? head : "\(head): \(reason)"
+    }
     static func unmountFailed(_ reason: String) -> String {
         t("切れませんでした: \(reason)", "Could not disconnect: \(reason)")
+    }
+    /// 自分では外せない。手でやってもらうしかないので、叩く命令をそのまま出す
+    static func staleMountStuck(_ mountPoint: String) -> String {
+        t(
+            "前の接続が残っています。ターミナルで umount -f \(mountPoint) を実行してください",
+            "The previous mount is still there. Run umount -f \(mountPoint) in Terminal")
     }
     static var mountTimedOut: String {
         t("マウントが終わりませんでした", "The mount did not finish")
