@@ -216,14 +216,54 @@ Konechi のような表情で状態を表すキャラは採らない。
 
 ## 手元の状態（2026-08-12 時点）
 
-まだコードは1行も無い。この仕様書だけがある。
+**骨組みが動くところまで来た。** `./build.sh` で `Gocci.app` ができ、メニューバーから
+マウントとアンマウントができる。
 
-- **rclone は導入済み。** `brew install rclone` で v1.75.0。同梱用のバイナリはまだ持ってきていない
+| 確かめたこと | 結果 |
+| --- | --- |
+| `build.sh` で Gocci.app ができる | 可。rclone v1.75.0 を同梱して 66MB |
+| アプリからマウント | 可。`/Volumes/HIKSEMI/GocciApp` に `localhost:/ … (nfs)` |
+| 中身 | 18項目。検証用マウントと同じ |
+| 読み書き | 可。作成・読み出し・削除とも通った |
+| 終了時のアンマウント | 可。rclone も残らない |
+
+書いたもの:
+
+| ファイル | 中身 |
+| --- | --- |
+| `build.sh` | rclone を取ってきて同梱し、`swiftc` で組んでアドホック署名まで |
+| `Sources/Mount.swift` | rclone の起動・停止。マウントの有無は statfs で見る |
+| `Sources/main.swift` | メニューバーの常駐とメニュー |
+| `Sources/SettingsWindow.swift` | マウント先・キャッシュ先・リモート名・言語・ログイン時の起動 |
+| `Sources/Settings.swift` | UserDefaults。キャッシュ先の既定はマウント先と同じディスクの直下 |
+| `Sources/Localization.swift` | 日本語と英語。Konechi と同じ表形式 |
+| `Sources/Icon.swift` | SF Symbols での仮のアイコン |
+
+決めたこと:
+
+- **`--daemon` は付けない。** 付けると rclone がすぐ抜けて、落ちたことを知る手立てが無くなる。
+  前面で走らせて子プロセスとして持つ
+- **マウントの成否は rclone の出力ではなく statfs で見る。** 知りたいのは実際にマウント表に
+  載ったかどうかで、rclone が何を書いたかではない
+- **アンマウントは SIGTERM から。** rclone は自分で外して終わる。umount を先に叩くと、
+  書き戻しの途中で足元を外すことになる。外れなければ umount、それでも駄目なら
+  `diskutil unmount force` の順で降りる
+- **キャッシュ先の既定はマウント先と同じディスクの直下。** 内蔵の空きが乏しいから外付けに
+  マウントしているので、既定でも内蔵には置かない
+- **Sparkle はまだ入れていない。** 署名鍵を作らないと `SUPublicEDKey` が埋められない。
+  `release.sh` と一緒に、配布を始める段で入れる
+
+環境:
+
+- **rclone は導入済み。** `brew install rclone` で v1.75.0。同梱するバイナリは `build.sh` が
+  同じ v1.75.0 を `downloads.rclone.org` から取ってきて `Vendor/rclone` に置く（git の管理外）
 - **`gdrive` リモートは設定済み。** `~/.config/rclone/rclone.conf`。
   ただし **rclone 共用の client_id のまま**なので、起動のたびに 2026年中に停止する旨の警告が出る。
   自前の client_id への差し替えはまだ
-- **検証用のマウントが生きている。** `/Volumes/HIKSEMI/GocciTest`。
+- **検証用のマウントが生きている。** `/Volumes/HIKSEMI/GocciTest`（手で張ったほう）。
   外すときは `umount /Volumes/HIKSEMI/GocciTest`。キャッシュは `/Volumes/HIKSEMI/.gocci-cache`
+- **アプリの動作確認に使った設定が残っている。** マウント先は `/Volumes/HIKSEMI/GocciApp`。
+  本番の置き換えでは CloudMounter と同じ場所に振り直す
 - 置き換え対象の CloudMounter は `/Volumes/HIKSEMI/.CloudStorage/CloudMounter-KouheiKawamura` に
   マウントされたまま。並行して動かして見比べてから外す
 
@@ -239,8 +279,12 @@ Konechi のような表情で状態を表すキャラは採らない。
 
 ### 次にやること
 
-`build.sh` と、メニューバーに常駐して rclone を起動・停止するだけの骨組み。
-Konechi の `build.sh` / `release.sh` を土台にする。
+1. **ログイン時の自動マウント。** 外付けが繋がるまで待つ。待つ間隔と諦めるまでの時間、
+   通知を出すかは保留のまま
+2. **rclone が落ちたときの扱い。** 今は「エラー」と出して止まるだけ。再起動するかを決める
+3. **アイコン。** 雲＋ディスクの案を形にする。今は SF Symbols の仮
+4. **Sparkle と `release.sh`。** 署名鍵を作るところから。Konechi の `release.sh` を持ってくる
+5. **README と LP。**
 
 ## 調べた結果、採らなかったもの
 

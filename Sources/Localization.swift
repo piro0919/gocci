@@ -1,0 +1,81 @@
+import Foundation
+
+// 表示文字列。
+//
+// Konechi と同じく .lproj は使わず Swift の表に置く。ビルドを自前の shell で組んでいるので、
+// 文字列だけのために資源の仕組みを足すと build.sh が重くなる。言語は2つしかない。
+
+enum Language: String, CaseIterable {
+    case system, ja, en
+
+    /// 実際に使う言語。既定は英語で、環境が日本語のときだけ日本語にする
+    static var resolved: Language {
+        switch Settings.language {
+        case .ja: return .ja
+        case .en: return .en
+        case .system:
+            let preferred = Locale.preferredLanguages.first ?? "en"
+            return preferred.hasPrefix("ja") ? .ja : .en
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .system: return L.t("システムに従う", "Follow system")
+        case .ja: return "日本語"
+        case .en: return "English"
+        }
+    }
+}
+
+enum L {
+    static func t(_ ja: String, _ en: String) -> String {
+        Language.resolved == .ja ? ja : en
+    }
+
+    // メニュー
+    static var driveName: String { "Google Drive" }
+    static var mounted: String { t("接続中", "Connected") }
+    static var mounting: String { t("接続しています…", "Connecting…") }
+    static var unmounting: String { t("切っています…", "Disconnecting…") }
+    static var unmounted: String { t("未接続", "Not connected") }
+    static var failed: String { t("エラー", "Error") }
+    static var mountPointUnset: String { t("マウント先が未設定です", "No mount point set") }
+    static var openInFinder: String { t("Finder で開く", "Open in Finder") }
+    static var connect: String { t("接続する", "Connect") }
+    static var disconnect: String { t("接続を切る", "Disconnect") }
+    static var settings: String { t("設定…", "Settings…") }
+    static var quit: String { t("終了", "Quit") }
+
+    // 設定画面
+    static var settingsTitle: String { t("Gocci の設定", "Gocci Settings") }
+    static var mountPoint: String { t("マウント先", "Mount point") }
+    static var cacheDir: String { t("キャッシュ先", "Cache folder") }
+    static var remote: String { t("rclone のリモート名", "rclone remote") }
+    static var choose: String { t("選ぶ…", "Choose…") }
+    static var notSet: String { t("未設定", "Not set") }
+    static var cacheDefaultHint: String {
+        t(
+            "空にすると、マウント先と同じディスクに置きます",
+            "Leave empty to place it on the same disk as the mount point")
+    }
+    static var launchAtLogin: String { t("ログイン時に起動する", "Launch at login") }
+    static var language: String { t("言語", "Language") }
+    static func launchToggleFailed(_ reason: String) -> String {
+        t("切り替えられませんでした: \(reason)", "Could not change it: \(reason)")
+    }
+
+    // エラー
+    static var rcloneMissing: String {
+        t("rclone が見つかりません", "rclone was not found")
+    }
+    static func mountFailed(_ reason: String) -> String {
+        reason.isEmpty ? t("マウントできませんでした", "Could not mount") : reason
+    }
+    static func unmountFailed(_ reason: String) -> String {
+        t("切れませんでした: \(reason)", "Could not disconnect: \(reason)")
+    }
+    static var mountTimedOut: String {
+        t("マウントが終わりませんでした", "The mount did not finish")
+    }
+}

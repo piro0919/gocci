@@ -1,0 +1,15 @@
+build/
+Gocci.app/
+dist/
+.DS_Store
+
+# 同梱する rclone のバイナリ。ビルド時に取ってくるので git には置かない
+Vendor/
+
+# ランディングページ
+lp/node_modules/
+lp/.next/
+lp/tsconfig.tsbuildinfo
+node_modules/
+lp/public/sitemap*.xml
+lp/public/robots.txt
