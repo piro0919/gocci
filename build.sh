@@ -59,8 +59,48 @@ swiftc \
   -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
   -o "$APP/Contents/MacOS/Gocci" \
   Sources/Localization.swift Sources/Settings.swift Sources/Mount.swift \
-  Sources/Mark.swift Sources/Icon.swift Sources/Updater.swift \
+  Sources/Mark.swift Sources/Icon.swift Sources/Updater.swift Sources/BadgeIndex.swift \
   Sources/SettingsWindow.swift Sources/main.swift
+
+# Finder に実体の有無を出す拡張。アプリの中に PlugIns として入れる。
+# 利用者がシステム設定で有効にして初めて働く
+EXT="$APP/Contents/PlugIns/GocciFinderSync.appex"
+mkdir -p "$EXT/Contents/MacOS"
+
+# 拡張は main を持たない。入口は OS 側の _NSExtensionMain
+swiftc \
+  -parse-as-library \
+  -module-name GocciFinderSync \
+  -target "$TARGET" \
+  -O \
+  -framework AppKit \
+  -framework FinderSync \
+  -Xlinker -e -Xlinker _NSExtensionMain \
+  -o "$EXT/Contents/MacOS/GocciFinderSync" \
+  Sources/FinderSync/main.swift
+
+cat > "$EXT/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>GocciFinderSync</string>
+  <key>CFBundleDisplayName</key><string>Gocci</string>
+  <key>CFBundleExecutable</key><string>GocciFinderSync</string>
+  <key>CFBundleIdentifier</key><string>io.kkweb.gocci.FinderSync</string>
+  <key>CFBundlePackageType</key><string>XPC!</string>
+  <key>CFBundleShortVersionString</key><string>${VERSION}</string>
+  <key>CFBundleVersion</key><string>${VERSION}</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>NSExtension</key>
+  <dict>
+    <key>NSExtensionPointIdentifier</key><string>com.apple.FinderSync</string>
+    <key>NSExtensionPrincipalClass</key><string>GocciFinderSync.GocciFinderSync</string>
+    <key>NSExtensionAttributes</key><dict/>
+  </dict>
+</dict>
+</plist>
+PLIST
 
 # アプリ本体のアイコン。元絵があれば .icns を組み立てる。
 # 無くてもビルドは通る（Finder では白紙のままになる）
@@ -123,6 +163,7 @@ PLIST
 # 同梱した実行ファイルと framework は中から署名する。先にアプリを署名すると、
 # 後から中身が変わって壊れる
 codesign --force --sign - "$APP/Contents/MacOS/rclone"
+codesign --force --sign - --entitlements Sources/FinderSync/GocciFinderSync.entitlements "$EXT"
 codesign --force --sign - "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc" 2>/dev/null || true
 codesign --force --sign - "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Installer.xpc" 2>/dev/null || true
 codesign --force --sign - "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate" 2>/dev/null || true

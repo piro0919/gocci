@@ -42,7 +42,12 @@ enum Settings {
     static var resolvedCacheDir: String {
         if !cacheDir.isEmpty { return cacheDir }
 
-        if let volume = volumeRoot(of: mountPoint) {
+        // マウント先そのものではなく、その置き場所から数える。繋がった後のマウント先は
+        // それ自体が別のボリュームになり、自分の中を指してしまう
+        let parent = ((mountPoint as NSString).standardizingPath as NSString)
+            .deletingLastPathComponent
+
+        if let volume = volumeRoot(of: parent) {
             return (volume as NSString).appendingPathComponent(".gocci-cache")
         }
 

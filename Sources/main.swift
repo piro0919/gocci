@@ -70,6 +70,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 更新の確認は起動時に1回だけ。見つかったときだけ画面が出る
         Updater.shared.checkQuietly()
 
+        // Finder のバッジに使う一覧。拡張は自分では調べられないので、こちらが書く
+        BadgeIndex.start()
+
         // 外付けが挿さったら繋ぐ。5秒の見回りでも拾えるが、待たされた感じになる。
         //
         // 通知が来た直後は、ボリュームがまだ落ち着いていない。その隙にマウントを始めると
