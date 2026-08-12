@@ -67,6 +67,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         refresh()
 
+        handleSignals()
+
         // 更新の確認は起動時に1回だけ。見つかったときだけ画面が出る
         Updater.shared.checkQuietly()
 
@@ -97,6 +99,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 普段はメニューを触らずに繋がる。外付けがまだなら、繋がるまで待つ
         mount.mountWhenReady()
     }
+
+    /// 合図で止められたときも片付ける。
+    ///
+    /// SIGTERM は `pkill` や一部の終了手続きで飛んでくる。既定では即座に落ちるので、
+    /// applicationWillTerminate が走らず、マウントと rclone が残る。
+    /// 実機の試験で残ることを確かめた
+    private func handleSignals() {
+        for signalNumber in [SIGTERM, SIGINT] {
+            // 既定の動作を止めないと、受け口が呼ばれる前に落ちる
+            signal(signalNumber, SIG_IGN)
+
+            let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: .main)
+            source.setEventHandler { NSApp.terminate(nil) }
+            source.resume()
+            signalSources.append(source)
+        }
+    }
+
+    private var signalSources: [DispatchSourceSignal] = []
 
     /// 繋がったまま終了すると、次に Finder から触ったときに固まる。降りる前に外す
     func applicationWillTerminate(_ notification: Notification) {

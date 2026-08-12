@@ -249,6 +249,7 @@ final class MountController {
         let deadline = Date().addingTimeInterval(Self.mountTimeout)
         while Date() < deadline {
             if Mounts.isMounted(mountPoint) {
+                busyRetries = 0
                 finish(.mounted)
                 return
             }
@@ -441,8 +442,21 @@ final class MountController {
                 // 繋がっていたものが落ちた。繋ぎ直しにいく
                 self.recover()
             case .mounting:
-                // そもそも上がらなかった。設定か認証の問題なので、繰り返しても同じ
-                self.state = .failed(L.mountFailed(self.lastLogLine()))
+                // 場所がまだ掴まれているだけなら、少し置けば通る。
+                // それ以外は設定か認証の問題なので、繰り返しても同じ
+                let reason = self.lastLogLine()
+                if reason.contains("Resource busy"), self.busyRetries < Self.busyRetryLimit {
+                    self.busyRetries += 1
+                    logger.error("場所がまだ掴まれている。置いてからやり直す（\(self.busyRetries) 回目）")
+                    self.state = .reconnecting
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
+                        guard let self, self.state == .reconnecting else { return }
+                        self.mount()
+                    }
+                    return
+                }
+                self.busyRetries = 0
+                self.state = .failed(L.mountFailed(reason))
             case .unmounting, .unmounted, .waitingForDisk, .reconnecting, .failed:
                 break
             }
@@ -506,16 +520,25 @@ final class MountController {
         }
     }
 
-    /// 応答しないマウントを外す。相手が死んでいるので、待つ形の umount は返ってこない。強制で外す
+    /// 応答しないマウントを外す。相手が死んでいるので、待つ形の umount は返ってこない。強制で外す。
+    ///
+    /// 外れた直後はまだ場所が掴まれていて、すぐ張り直すと `Resource busy` で撥ねられたり、
+    /// マウントが終わらなくなったりする。落ち着くまで少し置く
     @discardableResult
     private func clearStaleMount(_ mountPoint: String) -> Bool {
-        forceUnmount(mountPoint)
+        guard forceUnmount(mountPoint) else { return false }
+        Thread.sleep(forTimeInterval: 5)
+        return true
     }
 
     /// 最後に応答を確かめた時刻。表に載っているかどうかだけでは、生きているか分からない
     private var lastProbe = Date()
     /// 応答を確かめる間隔
     private static let probeInterval: TimeInterval = 60
+
+    /// 場所が掴まれたままのときに、置いてからやり直す回数
+    private static let busyRetryLimit = 3
+    private var busyRetries = 0
 
     /// 続けて何回返らなければ落ちたと見なすか。
     ///
