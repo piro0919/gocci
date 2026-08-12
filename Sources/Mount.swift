@@ -198,7 +198,12 @@ final class MountController {
             Thread.sleep(forTimeInterval: Self.pollInterval)
         }
 
-        task.terminate()
+        // ここで SIGTERM を送ってはいけない。rclone は終わるときに後片付けとして
+        // マウント先を外しにいくが、まだ何もマウントされていないと、外す相手が
+        // 「その場所を含むボリューム」だと解釈され、外付けごと外れる（手元で3回起きた）。
+        // 上がっていないのだから外すものは無い。片付けをさせずに落とす
+        kill(task.processIdentifier, SIGKILL)
+        logger.error("マウントが \(Int(Self.mountTimeout)) 秒で終わらなかったので rclone を落とした")
         finish(.failed(L.mountTimedOut))
     }
 
@@ -238,9 +243,15 @@ final class MountController {
     }
 
     private func stop(mountPoint: String) {
-        // rclone は SIGTERM を受けると自分でアンマウントして終わる。
-        // こちらが umount を先に叩くと、rclone が書き戻す途中で足元を外すことになる
-        process?.terminate()
+        if Mounts.isMounted(mountPoint) {
+            // rclone は SIGTERM を受けると自分でアンマウントして終わる。
+            // こちらが umount を先に叩くと、rclone が書き戻す途中で足元を外すことになる
+            process?.terminate()
+        } else if let task = process {
+            // 上がっていないときに片付けをさせると、外す相手を取り違えて
+            // 外付けごと外される。片付けの余地を与えずに落とす
+            kill(task.processIdentifier, SIGKILL)
+        }
 
         if waitUntilUnmounted(mountPoint) {
             finish(.unmounted)

@@ -70,11 +70,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 更新の確認は起動時に1回だけ。見つかったときだけ画面が出る
         Updater.shared.checkQuietly()
 
-        // 外付けを挿した瞬間に繋ぐ。5秒の見回りでも拾えるが、待たされた感じになる
+        // 外付けが挿さったら繋ぐ。5秒の見回りでも拾えるが、待たされた感じになる。
+        //
+        // 通知が来た直後は、ボリュームがまだ落ち着いていない。その隙にマウントを始めると
+        // 失敗しやすく、失敗の後始末で外付けごと外れることがある。少し置いてから動く
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didMountNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            self?.mount.mountWhenReady()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                self?.mount.mountWhenReady()
+            }
         }
 
         // マウント先が決まっていなければ、まず設定を出す。初回はここに来る
