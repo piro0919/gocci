@@ -20,7 +20,9 @@ enum Finisher {
 
     static func start() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in tick() }
+        let created = Timer(timeInterval: interval, repeats: true) { _ in tick() }
+        RunLoop.main.add(created, forMode: .common)
+        timer = created
     }
 
     private static func tick() {

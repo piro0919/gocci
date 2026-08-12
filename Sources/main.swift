@@ -28,6 +28,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// 取得中の行。開くたびに入れ替える
     private var progressItems: [NSMenuItem] = []
+    /// メニューを開いている間だけ動く時計
+    private var openTimer: Timer?
 
     private var settingsWindow = SettingsWindowController()
     /// 画面を作り直すかの判断に使う。文字列は組み立て時に焼き込まれるため
@@ -180,6 +182,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         mount.refresh()
         refresh()
+
+        // 開いている間は通常の実行ループが止まるので、値が固まって見える。
+        // 別に時計を回して、取得中の行だけ動かし続ける
+        openTimer?.invalidate()
+        let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
+            self?.updateProgressSection()
+        }
+        RunLoop.current.add(timer, forMode: .common)
+        openTimer = timer
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        openTimer?.invalidate()
+        openTimer = nil
     }
 
     // MARK: - 表示の更新

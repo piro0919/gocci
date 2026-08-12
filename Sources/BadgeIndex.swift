@@ -65,7 +65,10 @@ enum BadgeIndex {
     static func start() {
         write()
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in write() }
+        // メニューを開いている間も回す必要がある。既定の作り方だと、そのあいだ止まる
+        let created = Timer(timeInterval: 5, repeats: true) { _ in write() }
+        RunLoop.main.add(created, forMode: .common)
+        timer = created
     }
 
     static func write() {
