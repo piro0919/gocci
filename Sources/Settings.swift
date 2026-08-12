@@ -10,7 +10,7 @@ enum Settings {
     private static let mountPointKey = "mountPoint"
     private static let cacheDirKey = "cacheDir"
     private static let remoteKey = "remote"
-    private static let readAheadKey = "readAhead"
+    private static let fetchWholeKey = "fetchWholeFile"
     private static let cacheMaxAgeKey = "cacheMaxAge"
     private static let cacheMaxSizeKey = "cacheMaxSize"
     private static let languageKey = "language"
@@ -119,24 +119,19 @@ enum Settings {
 
     // MARK: - 先読み
 
-    /// 読んだ位置より先を、どれだけ余分に取りに行くか（`--vfs-read-ahead`）。
+    /// 再生を途中で止めても、残りを最後まで取りにいくか。
     ///
-    /// 空なら渡さない。rclone の既定は先読み無しで、開かれた部分しか落ちてこない。
-    /// 大きく取ると「一度開いたら最後まで落ちてくる」に近づくが、少し覗いただけの
-    /// 大きなファイルまで丸ごと落ちてくる。`defaults write io.kkweb.gocci readAhead 100G`
-    static var readAhead: String {
-        get { UserDefaults.standard.string(forKey: readAheadKey) ?? "" }
+    /// rclone 側の先読み（`--vfs-read-ahead`）は使わない。あれを有効にすると、Finder が
+    /// サムネイルのために覗いただけの動画まで丸ごと落ちてくる。「開いた」の範囲が
+    /// 人の意図と合わない。
+    ///
+    /// 代わりにアプリが、ある程度読まれたファイルの続きを取りにいく
+    static var fetchesWholeFile: Bool {
+        get { UserDefaults.standard.bool(forKey: fetchWholeKey) }
         set {
-            UserDefaults.standard.set(newValue, forKey: readAheadKey)
+            UserDefaults.standard.set(newValue, forKey: fetchWholeKey)
             NotificationCenter.default.post(name: .settingsChanged, object: nil)
         }
-    }
-
-    /// 設定画面から見た「開いたファイルを最後まで取得する」。
-    /// 実体は先読みの大きさなので、入りきらない大きさを渡して事実上「全部」にする
-    static var fetchesWholeFile: Bool {
-        get { !readAhead.isEmpty }
-        set { readAhead = newValue ? "100G" : "" }
     }
 
     // MARK: - 言語

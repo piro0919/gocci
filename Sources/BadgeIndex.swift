@@ -40,14 +40,16 @@ enum BadgeIndex {
 
     /// 途中で止まっているファイルと、欠けている最初の位置。
     /// 進んでいる順に返す（あと少しのものから片付ける）
-    static func unfinished() -> [(path: String, gap: Int64)] {
+    static func unfinished() -> [(path: String, gap: Int64, held: Int64)] {
         progressLock.lock()
         defer { progressLock.unlock() }
         return
             lastProgress
             .filter { $0.value > 0 && $0.value < 100 }
             .sorted { $0.value > $1.value }
-            .compactMap { path, _ in lastGaps[path].map { (path: path, gap: $0) } }
+            .compactMap { path, _ in
+                lastGaps[path].map { (path: path, gap: $0, held: lastHeld[path] ?? 0) }
+            }
     }
 
     /// 取得の途中にあるもの。

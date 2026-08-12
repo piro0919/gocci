@@ -167,8 +167,7 @@ final class MountController {
         let cacheDir = Settings.resolvedCacheDir
         let remote = Settings.remote
         let options = Options(
-            readAhead: Settings.readAhead, cacheMaxAge: Settings.cacheMaxAge,
-            cacheMaxSize: Settings.cacheMaxSize)
+            cacheMaxAge: Settings.cacheMaxAge, cacheMaxSize: Settings.cacheMaxSize)
         state = .mounting
 
         queue.async { [weak self] in
@@ -180,7 +179,6 @@ final class MountController {
 
     /// 設定から決まる、rclone へ渡す値。マウントを始めた時点のものを持ち回る
     private struct Options {
-        let readAhead: String
         let cacheMaxAge: String
         let cacheMaxSize: String
     }
@@ -213,10 +211,8 @@ final class MountController {
             "--drive-export-formats", "webloc",
         ]
 
-        // 空なら渡さず、rclone の既定に任せる
-        if !options.readAhead.isEmpty {
-            task.arguments? += ["--vfs-read-ahead", options.readAhead]
-        }
+        // 先読みは使わない。読んだところだけが落ちてくる素の動きにする。
+        // 最後まで取りにいく役目はアプリが持つ（Finisher）
         if !options.cacheMaxAge.isEmpty {
             task.arguments? += ["--vfs-cache-max-age", options.cacheMaxAge]
         }

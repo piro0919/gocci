@@ -16,6 +16,12 @@ import Foundation
 // 開いてもいないファイルが裏で落ちてくることになるため。
 
 enum Finisher {
+    /// ここまで読まれていれば「使った」と見なす。
+    ///
+    /// Finder はサムネイルのために動画の先頭を数 MB 読む。それを「開いた」と扱うと、
+    /// フォルダを眺めただけで数 GB 落ちてくる。人が再生したなら、これは軽く超える
+    private static let usedThreshold: Int64 = 32_000_000
+
     /// 一度に読む量
     private static let blockSize = 4_000_000
     /// 次の1本を探すまでの間隔
@@ -42,7 +48,9 @@ enum Finisher {
         }
 
         let mountPoint = (Settings.mountPoint as NSString).standardizingPath
-        guard !mountPoint.isEmpty, let target = BadgeIndex.unfinished().first else { return }
+        guard !mountPoint.isEmpty,
+            let target = BadgeIndex.unfinished().first(where: { $0.held >= usedThreshold })
+        else { return }
 
         busy = true
         DispatchQueue.global(qos: .utility).async {
