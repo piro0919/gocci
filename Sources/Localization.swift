@@ -71,16 +71,12 @@ enum L {
     static var choose: String { t("選ぶ…", "Choose…") }
     static var notSet: String { t("未設定", "Not set") }
     static var cacheDefaultHint: String {
-        t(
-            "空にすると、マウント先と同じディスクに置きます",
-            "Leave empty to place it on the same disk as the mount point")
+        t("空にするとマウント先と同じディスク", "Empty means the mount point's disk")
     }
     static var cacheMaxAge: String { t("キャッシュの保存期間", "Keep downloads for") }
     static var cacheMaxSize: String { t("キャッシュの上限", "Cache limit") }
     static var cacheLimitsHint: String {
-        t(
-            "空にすると rclone の既定（1時間・上限なし）に戻ります。例: 30d、50G",
-            "Empty falls back to rclone's defaults (1 hour, no limit). e.g. 30d, 50G")
+        t("例: 30d、50G。空にするとrcloneの既定に戻ります", "e.g. 30d, 50G. Empty uses rclone's defaults")
     }
     static var launchAtLogin: String { t("ログイン時に起動する", "Launch at login") }
     static var fetchWhole: String {
@@ -88,18 +84,18 @@ enum L {
     }
     static var fetchWholeHint: String {
         t(
-            "ある程度まで読まれたファイルだけが対象です。Finder が覗いただけのものは取りません",
-            "Only files you actually used. A thumbnail peek does not count")
+            "実際に使ったファイルだけが対象です",
+            "Only files you actually used")
     }
     static var clientID: String { "client_id" }
     static var clientSecret: String { "client_secret" }
     static var credentialsHint: String {
         t(
-            "rclone 共用のものは 2026年中に停止します。自分の client_id を作って入れてください",
-            "rclone's shared one stops working during 2026. Create your own and paste it here")
+            "rclone共用のものは2026年中に停止します",
+            "rclone's shared one stops working during 2026")
     }
     static var howToGetCredentials: String { t("取得の手順", "How to get one") }
-    static var openCloudConsole: String { t("Cloud Console を開く", "Open Cloud Console") }
+    static var openCloudConsole: String { t("Google Cloud Console", "Google Cloud Console") }
     static var reconnect: String { t("保存して認証し直す", "Save and re-authenticate") }
     static var reconnecting2: String {
         t("ブラウザで認証してください…", "Finish the sign-in in your browser…")
@@ -110,8 +106,8 @@ enum L {
     }
     static var keepFinderSettingsHint: String {
         t(
-            "フォルダのアイコンプレビューを切れるようになり、覗いても中身が落ちてきません。Drive に .DS_Store が作られます",
-            "Lets you turn off icon previews per folder, so browsing downloads nothing. Adds .DS_Store files to your Drive")
+            "アイコンプレビューを切れるようになります（Driveに.DS_Storeが作られます）",
+            "Lets you turn off icon previews (adds .DS_Store to your Drive)")
     }
     static var language: String { t("言語", "Language") }
     static var checkForUpdates: String { t("更新を確認", "Check for updates") }

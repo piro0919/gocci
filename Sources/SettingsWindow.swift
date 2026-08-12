@@ -98,19 +98,22 @@ final class SettingsWindowController: NSWindowController {
             row(L.mountPoint, mountPointField, chooseMountPoint),
             row(L.cacheDir, cacheDirField, chooseCacheDir),
             row(L.remote, remoteField),
+            divider(),
             row(L.clientID, clientIDField),
             row(L.clientSecret, clientSecretField),
             hint(L.credentialsHint),
             links(),
+            divider(),
             row(L.cacheMaxAge, cacheMaxAgeField),
             row(L.cacheMaxSize, cacheMaxSizeField),
             hint(L.cacheLimitsHint),
-            row(L.language, languagePopUp),
-            launchCheckbox,
             fetchWholeCheckbox,
             hint(L.fetchWholeHint),
             finderSettingsCheckbox,
             hint(L.keepFinderSettingsHint),
+            divider(),
+            row(L.language, languagePopUp),
+            launchCheckbox,
             messageLabel,
             updateButton,
             about,
@@ -173,6 +176,8 @@ final class SettingsWindowController: NSWindowController {
         showWindow(nil)
         window?.center()
         window?.makeKeyAndOrderFront(nil)
+        // 開いた瞬間に文字が選ばれていると、うっかり上書きしてしまう
+        window?.makeFirstResponder(nil)
     }
 
     /// 入力欄は Enter か、窓を閉じたときに保存する。
@@ -293,6 +298,15 @@ final class SettingsWindowController: NSWindowController {
                 MountController.shared.remount()
             }
         }
+    }
+
+    /// 区切り線。性質の違うものを分ける
+    private func divider() -> NSView {
+        let line = NSBox()
+        line.boxType = .separator
+        line.translatesAutoresizingMaskIntoConstraints = false
+        line.widthAnchor.constraint(equalToConstant: 412).isActive = true
+        return line
     }
 
     /// 添え書き。項目の下に一段小さく置く
