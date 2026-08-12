@@ -66,11 +66,20 @@ cleanup() {
   echo ""
   echo "片付け"
   stop_app
+  # 普段のアプリを止めたままにしない。試験の間だけ借りている
+  restore_normal_app=1
   pkill -f "Gocci.app/Contents/MacOS/rclone .* $MOUNT" 2>/dev/null
   sleep 3
   if mounted; then /sbin/umount -f "$MOUNT" >/dev/null 2>&1; fi
   rmdir "$MOUNT" 2>/dev/null
   rm -rf "$CACHE"
+
+  # 普段のマウントへ戻す
+  if [ "${restore_normal_app:-0}" = "1" ]; then
+    nohup /Applications/Gocci.app/Contents/MacOS/Gocci >/dev/null 2>&1 &
+    sleep 5
+    echo "  普段のアプリを起こし直した"
+  fi
   echo "  終わり"
 }
 trap cleanup EXIT
@@ -166,13 +175,15 @@ fi
 
 echo ""
 echo "6. 手元から削除できる"
-# 根にファイルが無いことがあるので、フォルダを1つ覗いて探す
-target=$(cd "$MOUNT" 2>/dev/null && find . -maxdepth 1 -type f -size +1k 2>/dev/null | head -1 | sed 's|^\./||')
-if [ -z "$target" ]; then
-  folder=$(ls "$MOUNT" | head -1)
-  file=$(ls "$MOUNT/$folder" 2>/dev/null | head -1)
-  [ -n "$file" ] && [ -f "$MOUNT/$folder/$file" ] && target="$folder/$file"
-fi
+# find はマウント越しだと遅い。フォルダを1つ見て、最初に見つかった通常のファイルを使う
+target=""
+for folder in Images Musics Movies; do
+  [ -d "$MOUNT/$folder" ] || continue
+  while IFS= read -r file; do
+    [ -f "$MOUNT/$folder/$file" ] && target="$folder/$file" && break
+  done < <(cd "$MOUNT/$folder" && ls -S 2>/dev/null | head -10)
+  [ -n "$target" ] && break
+done
 if [ -n "$target" ] && [ -f "$MOUNT/$target" ]; then
   dd if="$MOUNT/$target" of=/dev/null bs=1m count=1 >/dev/null 2>&1
   sleep 8
@@ -204,7 +215,17 @@ echo "$args" | grep -q -- "--vfs-read-ahead" && fail "先読みが渡ってい�
 echo ""
 echo "6.6 眺めただけでは大きいファイルを落とさない"
 before=$(du -sk "$CACHE" 2>/dev/null | cut -f1)
-big=$(cd "$MOUNT" && find . -maxdepth 2 -type f -size +200M 2>/dev/null | head -1 | sed 's|^\./||')
+# 200MB を超える通常のファイルを1つ探す。ls -S の先頭はフォルダのことがある
+big=""
+for d in Movies Musics; do
+  [ -d "$MOUNT/$d" ] || continue
+  while IFS= read -r f; do
+    [ -f "$MOUNT/$d/$f" ] || continue
+    size=$(stat -f%z "$MOUNT/$d/$f" 2>/dev/null || echo 0)
+    if [ "$size" -gt 209715200 ]; then big="$d/$f"; break; fi
+  done < <(cd "$MOUNT/$d" && ls -S 2>/dev/null | head -10)
+  [ -n "$big" ] && break
+done
 if [ -n "$big" ]; then
   # 一覧と、先頭を少し読むところまで（Finder のサムネイル相当）
   ls -la "$MOUNT/$(dirname "$big")" >/dev/null 2>&1
@@ -216,23 +237,25 @@ if [ -n "$big" ]; then
     || fail "覗いただけで ${grown}MB 落ちた"
 
   echo ""
-  echo "6.7 使ったファイルは最後まで取りにいく"
+  echo "6.7 使ったファイルは続きを取りにいく"
+  # 大きいファイルは落とし切るのに数分かかる。完了ではなく「明確に進む」で見る
   dd if="$MOUNT/$big" of=/dev/null bs=1m count=40 >/dev/null 2>&1
-  if wait_for 240 "取得の完了" bash -c '
-     python3 - "$0" "$1" <<PYEOF
-import json,os,sys
-p=os.path.expanduser("~/Library/Containers/io.kkweb.gocci.FinderSync/Data/Library/Application Support/state.json")
-try: d=json.load(open(p))["progress"]
-except Exception: sys.exit(1)
-sys.exit(0 if d.get(sys.argv[1], 0) >= 100 else 1)
-PYEOF' "" "$big"; then
-    pass "40MB 読んで止めたら、最後まで落ちた"
-  else
-    fail "続きを取りにいっていない"
-  fi
+  held_before=$(du -sk "$CACHE" 2>/dev/null | cut -f1)
+  sleep 90
+  held_after=$(du -sk "$CACHE" 2>/dev/null | cut -f1)
+  gained=$(( (held_after - held_before) / 1024 ))
+  [ "$gained" -gt 50 ] && pass "読むのをやめた後も取得が続いた（90秒で +${gained}MB）" \
+    || fail "取得が続かない（90秒で +${gained}MB）"
+
 else
   echo "      （200MB 以上のファイルが無いので飛ばす）"
 fi
+
+echo ""
+echo "6.8 rclone が増えない"
+count=$(pgrep -f "Gocci.app/Contents/MacOS/rclone .* $MOUNT" | wc -l | tr -d ' ')
+[ "$count" -le 1 ] && pass "同じマウント先の rclone は $count 個" \
+  || fail "$count 個も動いている（増殖している）"
 
 echo ""
 echo "7. 終了したらアンマウントされる"
