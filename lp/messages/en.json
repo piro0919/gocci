@@ -1,0 +1,87 @@
+{
+  "meta": {
+    "title": "Gocci — mount Google Drive wherever you want on macOS",
+    "description": "Mount Google Drive on an external disk, or anywhere else, without macFUSE — and without the shared files you once opened cluttering the top of your drive. A small macOS menu bar app."
+  },
+  "hero": {
+    "badge": "macOS 14+ / Apple silicon",
+    "title": "Put Google Drive where you want it.",
+    "tagline": "Mount it on an external disk. No kernel extension. No clutter from files other people shared with you.",
+    "download": "Download",
+    "source": "View source",
+    "note": "Free and open source. The first launch shows an \"unidentified developer\" warning"
+  },
+  "problem": {
+    "title": "Why this exists",
+    "lead": "The internal disk was full, so Google Drive had to live on an external one. No tool would do it.",
+    "items": [
+      {
+        "title": "Google's own app",
+        "body": "You cannot choose where it mounts. It lands on the internal disk, which had 42 GB free."
+      },
+      {
+        "title": "Mountain Duck",
+        "body": "Its docs say a custom mount location is not honoured on macOS — it is always ~/Library/CloudStorage."
+      },
+      {
+        "title": "CloudMounter",
+        "body": "The location is yours to pick. But every file you ever opened through a share link is listed at the top of the drive, with no setting to hide them."
+      }
+    ]
+  },
+  "features": {
+    "title": "What Gocci does",
+    "items": [
+      {
+        "title": "Mounts anywhere",
+        "body": "An external disk, or any folder you like. It mounts at login, and waits for the disk if it is not plugged in yet."
+      },
+      {
+        "title": "No kernel extension",
+        "body": "It runs on rclone's NFS mount. Nothing to install, nothing to approve, no reboot. Just the app."
+      },
+      {
+        "title": "No shared items",
+        "body": "Files other people shared with you are not listed. What you see matches My Drive in the browser."
+      },
+      {
+        "title": "Finder shows what is local",
+        "body": "A badge per file: cloud only, downloading, or fully here. Right-click to send one back to the cloud."
+      }
+    ]
+  },
+  "how": {
+    "title": "How it works",
+    "body": "rclone serves NFS on localhost and macOS mounts it. Files come down when you open them and stay in a cache. How long they stay, and how large the cache may grow, are yours to set.",
+    "points": [
+      "Writing works as usual — copy and delete from Finder",
+      "Google Docs appear as .webloc files and open in the browser",
+      "rclone ships inside the app, pinned to a version that was tested by hand"
+    ]
+  },
+  "install": {
+    "title": "Getting started",
+    "steps": [
+      {
+        "title": "Install",
+        "body": "Download the DMG and drag Gocci into Applications. The first launch is met with an \"unidentified developer\" warning — allow it from System Settings → Privacy & Security."
+      },
+      {
+        "title": "Connect Drive",
+        "body": "Create a drive remote with rclone config, and make your own client ID while you are there (rclone's shared one stops working during 2026)."
+      },
+      {
+        "title": "Pick the place",
+        "body": "Choose the mount point in Gocci's settings. From then on it mounts there every time you log in."
+      }
+    ]
+  },
+  "footer": {
+    "built": "A macOS menu bar app, by the author of Konechi",
+    "source": "GitHub"
+  },
+  "language": {
+    "en": "EN",
+    "ja": "日本語"
+  }
+}

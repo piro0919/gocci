@@ -1,0 +1,8 @@
+{
+  "name": "gocci",
+  "private": true,
+  "scripts": {
+    "lp:dev": "pnpm --filter gocci-lp dev",
+    "lp:build": "pnpm --filter gocci-lp build"
+  }
+}

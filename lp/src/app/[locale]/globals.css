@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+@theme {
+  /* アイコンの配色をそのまま持ってくる。上が明るい青緑、下が濃い藍 */
+  --color-teal: #29c7c0;
+  --color-teal-deep: #17a3a6;
+  --color-navy: #17559f;
+  --color-navy-deep: #0b2f5e;
+  --color-ink: #0d1b2a;
+  --color-paper: #f4f7fa;
+  --color-line: #dde5ee;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+/* 見出しの帯。アイコンと同じ向きのグラデーション */
+.brand {
+  background: linear-gradient(135deg, var(--color-teal) 0%, var(--color-navy-deep) 100%);
+}
+
+/* 背景に薄く敷く方眼。ディスクの話をする面なので、丸ではなく格子にする */
+.grid-bg {
+  background-image:
+    linear-gradient(var(--color-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-line) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
