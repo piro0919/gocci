@@ -62,8 +62,8 @@ final class MountController {
     private let queue = DispatchQueue(label: "io.kkweb.gocci.mount")
 
     private init() {
-        // 前回の残りが生きていることがある。アプリを再起動しただけで未接続には見せない
-        if Mounts.isMounted(Settings.mountPoint) { state = .mounted }
+        // ここでは何も決めない。前回の残りが表に載っていても、それが生きているとは限らない。
+        // 引き継ぐか外すかは mount() が応答を見て決める
     }
 
     // MARK: - 同梱した rclone
@@ -116,9 +116,27 @@ final class MountController {
             return
         }
 
-        // 外で誰かが既にマウントしている場合は、そのまま繋がっているものとして扱う
+        // 既にマウント表に載っている場合。応答するなら引き継ぎ、返らないなら抜け殻として外す。
+        // 表に載っているかどうかだけで判断すると、相手の居ないマウントを繋がっていると
+        // 報せることになる（rclone を止めた直後に起動し直すと、実際にそうなった）
         if Mounts.isMounted(mountPoint) {
-            state = .mounted
+            state = .mounting
+            queue.async { [weak self] in
+                guard let self else { return }
+                if self.responds(mountPoint) {
+                    self.finish(.mounted)
+                    return
+                }
+                logger.error("マウント表に載っているが応答しない。抜け殻として外す")
+                guard self.clearStaleMount(mountPoint) else {
+                    self.finish(.failed(L.staleMountStuck(mountPoint)))
+                    return
+                }
+                DispatchQueue.main.async {
+                    self.state = .unmounted
+                    self.mount()
+                }
+            }
             return
         }
 
@@ -142,18 +160,27 @@ final class MountController {
 
         let cacheDir = Settings.resolvedCacheDir
         let remote = Settings.remote
-        let readAhead = Settings.readAhead
+        let options = Options(
+            readAhead: Settings.readAhead, cacheMaxAge: Settings.cacheMaxAge,
+            cacheMaxSize: Settings.cacheMaxSize)
         state = .mounting
 
         queue.async { [weak self] in
             self?.launch(
                 rclone: rclone, remote: remote, mountPoint: mountPoint, cacheDir: cacheDir,
-                readAhead: readAhead)
+                options: options)
         }
     }
 
+    /// 設定から決まる、rclone へ渡す値。マウントを始めた時点のものを持ち回る
+    private struct Options {
+        let readAhead: String
+        let cacheMaxAge: String
+        let cacheMaxSize: String
+    }
+
     private func launch(
-        rclone: String, remote: String, mountPoint: String, cacheDir: String, readAhead: String
+        rclone: String, remote: String, mountPoint: String, cacheDir: String, options: Options
     ) {
         // 途中の道は作らない。外付けが抜けている隙に、内蔵へその場しのぎの入れ物を
         // 作ってしまうのを防ぐ。作るのはマウント先とキャッシュ先そのものだけ
@@ -180,9 +207,15 @@ final class MountController {
             "--drive-export-formats", "webloc",
         ]
 
-        // 先読み。空なら渡さない（rclone の既定は先読み無しで、開かれた部分しか落ちてこない）
-        if !readAhead.isEmpty {
-            task.arguments? += ["--vfs-read-ahead", readAhead]
+        // 空なら渡さず、rclone の既定に任せる
+        if !options.readAhead.isEmpty {
+            task.arguments? += ["--vfs-read-ahead", options.readAhead]
+        }
+        if !options.cacheMaxAge.isEmpty {
+            task.arguments? += ["--vfs-cache-max-age", options.cacheMaxAge]
+        }
+        if !options.cacheMaxSize.isEmpty {
+            task.arguments? += ["--vfs-cache-max-size", options.cacheMaxSize]
         }
 
         let errorPipe = Pipe()
@@ -225,6 +258,11 @@ final class MountController {
         kill(task.processIdentifier, SIGKILL)
         logger.error("マウントが \(Int(Self.mountTimeout)) 秒で終わらなかったので rclone を落とした")
         finish(.failed(L.mountTimedOut))
+    }
+
+    /// そのマウントが生きているか。表に載っていても、相手が死んでいれば読み出しは返らない
+    private func responds(_ mountPoint: String) -> Bool {
+        run("/bin/ls", [mountPoint], timeout: 8)
     }
 
     private func createDirectoryIfNeeded(_ path: String) throws {

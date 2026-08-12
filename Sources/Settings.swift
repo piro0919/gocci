@@ -11,6 +11,8 @@ enum Settings {
     private static let cacheDirKey = "cacheDir"
     private static let remoteKey = "remote"
     private static let readAheadKey = "readAhead"
+    private static let cacheMaxAgeKey = "cacheMaxAge"
+    private static let cacheMaxSizeKey = "cacheMaxSize"
     private static let languageKey = "language"
 
     // MARK: - マウント先
@@ -91,6 +93,31 @@ enum Settings {
         }
         set {
             UserDefaults.standard.set(newValue, forKey: remoteKey)
+            NotificationCenter.default.post(name: .settingsChanged, object: nil)
+        }
+    }
+
+    // MARK: - キャッシュの寿命と上限
+
+    /// 最終アクセスからどれだけ残すか（`--vfs-cache-max-age`）。
+    ///
+    /// rclone の既定は 1 時間で、それだと一度落としたものがすぐ消える。
+    /// 「開いたものは手元に残る」に寄せて 30 日を既定にする。空にすると rclone の既定に戻る
+    static var cacheMaxAge: String {
+        get { UserDefaults.standard.object(forKey: cacheMaxAgeKey) as? String ?? "30d" }
+        set {
+            UserDefaults.standard.set(newValue, forKey: cacheMaxAgeKey)
+            NotificationCenter.default.post(name: .settingsChanged, object: nil)
+        }
+    }
+
+    /// キャッシュ全体の上限（`--vfs-cache-max-size`）。
+    ///
+    /// rclone の既定は上限なし。寿命を延ばす以上、歯止めが要る。空にすると上限なしに戻る
+    static var cacheMaxSize: String {
+        get { UserDefaults.standard.object(forKey: cacheMaxSizeKey) as? String ?? "50G" }
+        set {
+            UserDefaults.standard.set(newValue, forKey: cacheMaxSizeKey)
             NotificationCenter.default.post(name: .settingsChanged, object: nil)
         }
     }

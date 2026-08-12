@@ -9,6 +9,8 @@ final class SettingsWindowController: NSWindowController {
     private let mountPointField = NSTextField(string: "")
     private let cacheDirField = NSTextField(string: "")
     private let remoteField = NSTextField(string: "")
+    private let cacheMaxAgeField = NSTextField(string: "")
+    private let cacheMaxSizeField = NSTextField(string: "")
     private let launchCheckbox = NSButton(
         checkboxWithTitle: L.launchAtLogin, target: nil, action: nil)
     private let fetchWholeCheckbox = NSButton(
@@ -38,13 +40,17 @@ final class SettingsWindowController: NSWindowController {
 
         window.delegate = self
 
-        for field in [mountPointField, cacheDirField, remoteField] {
+        for field in [
+            mountPointField, cacheDirField, remoteField, cacheMaxAgeField, cacheMaxSizeField,
+        ] {
             field.target = self
             field.action = #selector(commitFields)
         }
         mountPointField.placeholderString = "/Volumes/…"
         cacheDirField.placeholderString = L.cacheDefaultHint
         remoteField.placeholderString = "gdrive"
+        cacheMaxAgeField.placeholderString = "30d"
+        cacheMaxSizeField.placeholderString = "50G"
 
         launchCheckbox.target = self
         launchCheckbox.action = #selector(toggleLaunch)
@@ -84,6 +90,9 @@ final class SettingsWindowController: NSWindowController {
             row(L.mountPoint, mountPointField, chooseMountPoint),
             row(L.cacheDir, cacheDirField, chooseCacheDir),
             row(L.remote, remoteField),
+            row(L.cacheMaxAge, cacheMaxAgeField),
+            row(L.cacheMaxSize, cacheMaxSizeField),
+            hint(L.cacheLimitsHint),
             row(L.language, languagePopUp),
             launchCheckbox,
             fetchWholeCheckbox,
@@ -134,6 +143,8 @@ final class SettingsWindowController: NSWindowController {
         mountPointField.stringValue = Settings.mountPoint
         cacheDirField.stringValue = Settings.cacheDir
         remoteField.stringValue = Settings.remote
+        cacheMaxAgeField.stringValue = Settings.cacheMaxAge
+        cacheMaxSizeField.stringValue = Settings.cacheMaxSize
         launchCheckbox.state = Settings.launchesAtLogin ? .on : .off
         fetchWholeCheckbox.state = Settings.fetchesWholeFile ? .on : .off
         report("")
@@ -160,6 +171,12 @@ final class SettingsWindowController: NSWindowController {
         }
         if remoteField.stringValue != Settings.remote {
             Settings.remote = remoteField.stringValue
+        }
+        if cacheMaxAgeField.stringValue != Settings.cacheMaxAge {
+            Settings.cacheMaxAge = cacheMaxAgeField.stringValue
+        }
+        if cacheMaxSizeField.stringValue != Settings.cacheMaxSize {
+            Settings.cacheMaxSize = cacheMaxSizeField.stringValue
         }
     }
 

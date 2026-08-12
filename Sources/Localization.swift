@@ -63,6 +63,13 @@ enum L {
             "空にすると、マウント先と同じディスクに置きます",
             "Leave empty to place it on the same disk as the mount point")
     }
+    static var cacheMaxAge: String { t("キャッシュを残す期間", "Keep the cache for") }
+    static var cacheMaxSize: String { t("キャッシュの上限", "Cache size limit") }
+    static var cacheLimitsHint: String {
+        t(
+            "空にすると rclone の既定（1時間・上限なし）に戻ります。例: 30d、50G",
+            "Empty falls back to rclone's defaults (1 hour, no limit). e.g. 30d, 50G")
+    }
     static var launchAtLogin: String { t("ログイン時に起動する", "Launch at login") }
     static var fetchWhole: String {
         t("開いたファイルを最後まで取得する", "Fetch the whole file when it is opened")
