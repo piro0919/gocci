@@ -13,3 +13,6 @@ lp/tsconfig.tsbuildinfo
 node_modules/
 lp/public/sitemap*.xml
 lp/public/robots.txt
+
+# 検討用に作り直せる画像
+docs/icon-preview.png

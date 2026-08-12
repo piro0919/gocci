@@ -40,7 +40,7 @@ swiftc \
   -framework ServiceManagement \
   -o "$APP/Contents/MacOS/Gocci" \
   Sources/Localization.swift Sources/Settings.swift Sources/Mount.swift \
-  Sources/Icon.swift Sources/SettingsWindow.swift Sources/main.swift
+  Sources/Mark.swift Sources/Icon.swift Sources/SettingsWindow.swift Sources/main.swift
 
 # アプリ本体のアイコン。元絵があれば .icns を組み立てる。
 # 無くてもビルドは通る（Finder では白紙のままになる）

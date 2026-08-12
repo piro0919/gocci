@@ -2,37 +2,23 @@ import AppKit
 
 // メニューバーに出す絵。
 //
-// 本物のアイコン（雲＋ディスク）はまだ決まっていない。決まるまでは SF Symbols で代用する。
-// 記号の名前は macOS の版によって在る無いが変わるので、候補を並べて最初に見つかったものを使う。
+// 状態は塗り・中抜き・薄い塗りで出し分け、不具合のときだけ小さいバッジを足す。
+// 形は Mark が持っている。絵ではなく図形なので、どの大きさでも潰れない。
 
 enum Icon {
-    static func image(for state: MountState) -> NSImage? {
-        let names: [String]
-        switch state {
-        case .mounted:
-            names = ["externaldrive.fill.badge.icloud", "externaldrive.badge.icloud", "icloud.fill"]
-        case .mounting, .unmounting, .reconnecting:
-            names = ["externaldrive.badge.timemachine", "externaldrive", "icloud"]
-        case .unmounted, .waitingForDisk:
-            names = ["externaldrive", "icloud"]
-        case .failed:
-            names = [
-                "externaldrive.badge.exclamationmark", "exclamationmark.icloud", "icloud.slash",
-            ]
-        }
+    /// メニューバーでの実寸
+    static let height: CGFloat = 18
 
-        guard let image = first(of: names) else { return nil }
-        // メニューバーの色（外観の切り替えやダークメニューバー）に追従させる
-        image.isTemplate = true
-        return image
+    static func image(for state: MountState) -> NSImage {
+        Mark.image(height: height, style: style(for: state))
     }
 
-    private static func first(of names: [String]) -> NSImage? {
-        for name in names {
-            if let image = NSImage(systemSymbolName: name, accessibilityDescription: nil) {
-                return image
-            }
+    private static func style(for state: MountState) -> Mark.Style {
+        switch state {
+        case .mounted: return .solid
+        case .mounting, .unmounting, .waitingForDisk, .reconnecting: return .dim
+        case .unmounted: return .outline
+        case .failed: return .badged
         }
-        return nil
     }
 }
