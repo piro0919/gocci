@@ -132,6 +132,7 @@ final class MountController {
             queue.async { [weak self] in
                 guard let self else { return }
                 self.process?.terminate()
+                self.killOrphans(mountPoint)
 
                 if Mounts.isMounted(mountPoint), !self.forceUnmount(mountPoint) {
                     self.finish(.failed(L.staleMountStuck(mountPoint)))
@@ -264,6 +265,36 @@ final class MountController {
         kill(task.processIdentifier, SIGKILL)
         logger.error("マウントが \(Int(Self.mountTimeout)) 秒で終わらなかったので rclone を落とした")
         finish(.failed(L.mountTimedOut))
+    }
+
+    /// 前のアプリが残していった rclone を始末する。
+    ///
+    /// アプリが片付けの余地なく落ちると、子の rclone が生き残る。マウントを外しても
+    /// プロセスは残り、次のアプリが張り直すと同じ場所に複数の rclone が居ることになる。
+    /// 互いに邪魔をして取得が止まるので、張り直す前に掃除する（実際に5つ溜まった）
+    private func killOrphans(_ mountPoint: String) {
+        guard let rclone = Self.rclonePath else { return }
+
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        task.arguments = ["-f", "\(rclone) nfsmount .* \(mountPoint)"]
+
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+        guard (try? task.run()) != nil else { return }
+        task.waitUntilExit()
+
+        let output =
+            String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let mine = process?.processIdentifier
+        for line in output.split(separator: "\n") {
+            guard let pid = Int32(line.trimmingCharacters(in: .whitespaces)), pid != mine else {
+                continue
+            }
+            logger.info("前のアプリが残した rclone を落とす: \(pid)")
+            kill(pid, SIGKILL)
+        }
     }
 
     /// そのマウントが生きているか。表に載っていても、相手が死んでいれば読み出しは返らない
