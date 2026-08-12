@@ -142,14 +142,19 @@ final class MountController {
 
         let cacheDir = Settings.resolvedCacheDir
         let remote = Settings.remote
+        let readAhead = Settings.readAhead
         state = .mounting
 
         queue.async { [weak self] in
-            self?.launch(rclone: rclone, remote: remote, mountPoint: mountPoint, cacheDir: cacheDir)
+            self?.launch(
+                rclone: rclone, remote: remote, mountPoint: mountPoint, cacheDir: cacheDir,
+                readAhead: readAhead)
         }
     }
 
-    private func launch(rclone: String, remote: String, mountPoint: String, cacheDir: String) {
+    private func launch(
+        rclone: String, remote: String, mountPoint: String, cacheDir: String, readAhead: String
+    ) {
         // 途中の道は作らない。外付けが抜けている隙に、内蔵へその場しのぎの入れ物を
         // 作ってしまうのを防ぐ。作るのはマウント先とキャッシュ先そのものだけ
         do {
@@ -174,6 +179,11 @@ final class MountController {
             // Google ドキュメント類は .webloc で出す。開くとブラウザで Drive が開く
             "--drive-export-formats", "webloc",
         ]
+
+        // 先読み。空なら渡さない（rclone の既定は先読み無しで、開かれた部分しか落ちてこない）
+        if !readAhead.isEmpty {
+            task.arguments? += ["--vfs-read-ahead", readAhead]
+        }
 
         let errorPipe = Pipe()
         task.standardError = errorPipe

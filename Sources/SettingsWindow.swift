@@ -11,6 +11,8 @@ final class SettingsWindowController: NSWindowController {
     private let remoteField = NSTextField(string: "")
     private let launchCheckbox = NSButton(
         checkboxWithTitle: L.launchAtLogin, target: nil, action: nil)
+    private let fetchWholeCheckbox = NSButton(
+        checkboxWithTitle: L.fetchWhole, target: nil, action: nil)
     private let languagePopUp = NSPopUpButton()
     private let messageLabel = NSTextField(labelWithString: "")
     /// 一度でも開いたか。入力欄に今の値が入っているかの判断に使う
@@ -47,6 +49,9 @@ final class SettingsWindowController: NSWindowController {
         launchCheckbox.target = self
         launchCheckbox.action = #selector(toggleLaunch)
 
+        fetchWholeCheckbox.target = self
+        fetchWholeCheckbox.action = #selector(toggleFetchWhole)
+
         languagePopUp.target = self
         languagePopUp.action = #selector(changeLanguage)
         for language in Language.allCases {
@@ -81,6 +86,8 @@ final class SettingsWindowController: NSWindowController {
             row(L.remote, remoteField),
             row(L.language, languagePopUp),
             launchCheckbox,
+            fetchWholeCheckbox,
+            hint(L.fetchWholeHint),
             messageLabel,
             updateButton,
             about,
@@ -128,6 +135,7 @@ final class SettingsWindowController: NSWindowController {
         cacheDirField.stringValue = Settings.cacheDir
         remoteField.stringValue = Settings.remote
         launchCheckbox.state = Settings.launchesAtLogin ? .on : .off
+        fetchWholeCheckbox.state = Settings.fetchesWholeFile ? .on : .off
         report("")
         hasShown = true
 
@@ -187,6 +195,18 @@ final class SettingsWindowController: NSWindowController {
             return
         }
         report("")
+    }
+
+    @objc private func toggleFetchWhole() {
+        Settings.fetchesWholeFile = fetchWholeCheckbox.state == .on
+    }
+
+    /// 添え書き。項目の下に一段小さく置く
+    private func hint(_ text: String) -> NSView {
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: 11)
+        label.textColor = .secondaryLabelColor
+        return label
     }
 
     @objc private func checkForUpdates() {

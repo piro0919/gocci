@@ -64,6 +64,14 @@ enum L {
             "Leave empty to place it on the same disk as the mount point")
     }
     static var launchAtLogin: String { t("ログイン時に起動する", "Launch at login") }
+    static var fetchWhole: String {
+        t("開いたファイルを最後まで取得する", "Fetch the whole file when it is opened")
+    }
+    static var fetchWholeHint: String {
+        t(
+            "少し覗いただけでも全部落ちてきます。切り替えは次に繋ぎ直したときから効きます",
+            "Even a glance pulls the whole file. Takes effect the next time you reconnect")
+    }
     static var language: String { t("言語", "Language") }
     static var checkForUpdates: String { t("更新を確認", "Check for updates") }
     static func launchToggleFailed(_ reason: String) -> String {
