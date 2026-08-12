@@ -167,7 +167,8 @@ final class MountController {
         let cacheDir = Settings.resolvedCacheDir
         let remote = Settings.remote
         let options = Options(
-            cacheMaxAge: Settings.cacheMaxAge, cacheMaxSize: Settings.cacheMaxSize)
+            cacheMaxAge: Settings.cacheMaxAge, cacheMaxSize: Settings.cacheMaxSize,
+            keepsFinderSettings: Settings.keepsFinderSettings)
         state = .mounting
 
         queue.async { [weak self] in
@@ -181,6 +182,7 @@ final class MountController {
     private struct Options {
         let cacheMaxAge: String
         let cacheMaxSize: String
+        let keepsFinderSettings: Bool
     }
 
     private func launch(
@@ -218,6 +220,10 @@ final class MountController {
         }
         if !options.cacheMaxSize.isEmpty {
             task.arguments? += ["--vfs-cache-max-size", options.cacheMaxSize]
+        }
+        // 既定では rclone が .DS_Store を捨てる。捨てられると Finder の表示設定が残らない
+        if options.keepsFinderSettings {
+            task.arguments? += ["--noappledouble=false"]
         }
 
         let errorPipe = Pipe()

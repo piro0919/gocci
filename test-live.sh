@@ -53,7 +53,7 @@ app_running() { pgrep -f "Gocci.app/Contents/MacOS/Gocci" >/dev/null; }
 
 start_app() {
   nohup "$APP" -mountPoint "$MOUNT" -cacheDir "$CACHE" -remote "$REMOTE" \
-    -readAhead "" -cacheMaxAge "1h" -cacheMaxSize "5G" >/dev/null 2>&1 &
+    -fetchWholeFile -bool YES -cacheMaxAge "1h" -cacheMaxSize "5G" >/dev/null 2>&1 &
   sleep 2
 }
 
@@ -191,6 +191,47 @@ if [ -n "$target" ] && [ -f "$MOUNT/$target" ]; then
   fi
 else
   echo "      （根に読めるファイルが無いので飛ばす）"
+fi
+
+echo ""
+echo "6.5 設定が rclone に渡っている"
+args=$(pgrep -lf "Gocci.app/Contents/MacOS/rclone .* $MOUNT" | head -1)
+echo "$args" | grep -q -- "--vfs-cache-mode full" && pass "書き込みできる設定で動いている" || fail "--vfs-cache-mode が無い"
+echo "$args" | grep -q -- "--cache-dir $CACHE" && pass "キャッシュ先が渡っている" || fail "キャッシュ先が違う"
+echo "$args" | grep -q -- "--vfs-cache-max-age 1h" && pass "寿命が渡っている" || fail "寿命が渡っていない"
+echo "$args" | grep -q -- "--vfs-read-ahead" && fail "先読みが渡っている（渡してはいけない）" || pass "先読みは渡していない"
+
+echo ""
+echo "6.6 眺めただけでは大きいファイルを落とさない"
+before=$(du -sk "$CACHE" 2>/dev/null | cut -f1)
+big=$(cd "$MOUNT" && find . -maxdepth 2 -type f -size +200M 2>/dev/null | head -1 | sed 's|^\./||')
+if [ -n "$big" ]; then
+  # 一覧と、先頭を少し読むところまで（Finder のサムネイル相当）
+  ls -la "$MOUNT/$(dirname "$big")" >/dev/null 2>&1
+  dd if="$MOUNT/$big" of=/dev/null bs=1m count=4 >/dev/null 2>&1
+  sleep 25
+  after=$(du -sk "$CACHE" 2>/dev/null | cut -f1)
+  grown=$(( (after - before) / 1024 ))
+  [ "$grown" -lt 200 ] && pass "覗いただけでは丸ごと落ちない（+${grown}MB）" \
+    || fail "覗いただけで ${grown}MB 落ちた"
+
+  echo ""
+  echo "6.7 使ったファイルは最後まで取りにいく"
+  dd if="$MOUNT/$big" of=/dev/null bs=1m count=40 >/dev/null 2>&1
+  if wait_for 240 "取得の完了" bash -c '
+     python3 - "$0" "$1" <<PYEOF
+import json,os,sys
+p=os.path.expanduser("~/Library/Containers/io.kkweb.gocci.FinderSync/Data/Library/Application Support/state.json")
+try: d=json.load(open(p))["progress"]
+except Exception: sys.exit(1)
+sys.exit(0 if d.get(sys.argv[1], 0) >= 100 else 1)
+PYEOF' "" "$big"; then
+    pass "40MB 読んで止めたら、最後まで落ちた"
+  else
+    fail "続きを取りにいっていない"
+  fi
+else
+  echo "      （200MB 以上のファイルが無いので飛ばす）"
 fi
 
 echo ""

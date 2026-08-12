@@ -17,6 +17,8 @@ final class SettingsWindowController: NSWindowController {
         checkboxWithTitle: L.launchAtLogin, target: nil, action: nil)
     private let fetchWholeCheckbox = NSButton(
         checkboxWithTitle: L.fetchWhole, target: nil, action: nil)
+    private let finderSettingsCheckbox = NSButton(
+        checkboxWithTitle: L.keepFinderSettings, target: nil, action: nil)
     private let languagePopUp = NSPopUpButton()
     private let messageLabel = NSTextField(labelWithString: "")
     /// 一度でも開いたか。入力欄に今の値が入っているかの判断に使う
@@ -61,6 +63,9 @@ final class SettingsWindowController: NSWindowController {
         fetchWholeCheckbox.target = self
         fetchWholeCheckbox.action = #selector(toggleFetchWhole)
 
+        finderSettingsCheckbox.target = self
+        finderSettingsCheckbox.action = #selector(toggleFinderSettings)
+
         languagePopUp.target = self
         languagePopUp.action = #selector(changeLanguage)
         for language in Language.allCases {
@@ -104,6 +109,8 @@ final class SettingsWindowController: NSWindowController {
             launchCheckbox,
             fetchWholeCheckbox,
             hint(L.fetchWholeHint),
+            finderSettingsCheckbox,
+            hint(L.keepFinderSettingsHint),
             messageLabel,
             updateButton,
             about,
@@ -158,6 +165,7 @@ final class SettingsWindowController: NSWindowController {
         clientSecretField.stringValue = credentials["client_secret"] ?? ""
         launchCheckbox.state = Settings.launchesAtLogin ? .on : .off
         fetchWholeCheckbox.state = Settings.fetchesWholeFile ? .on : .off
+        finderSettingsCheckbox.state = Settings.keepsFinderSettings ? .on : .off
         report("")
         hasShown = true
 
@@ -223,6 +231,10 @@ final class SettingsWindowController: NSWindowController {
             return
         }
         report("")
+    }
+
+    @objc private func toggleFinderSettings() {
+        Settings.keepsFinderSettings = finderSettingsCheckbox.state == .on
     }
 
     @objc private func toggleFetchWhole() {

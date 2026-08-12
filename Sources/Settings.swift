@@ -11,6 +11,7 @@ enum Settings {
     private static let cacheDirKey = "cacheDir"
     private static let remoteKey = "remote"
     private static let fetchWholeKey = "fetchWholeFile"
+    private static let finderSettingsKey = "keepFinderSettings"
     private static let cacheMaxAgeKey = "cacheMaxAge"
     private static let cacheMaxSizeKey = "cacheMaxSize"
     private static let languageKey = "language"
@@ -130,6 +131,23 @@ enum Settings {
         get { UserDefaults.standard.bool(forKey: fetchWholeKey) }
         set {
             UserDefaults.standard.set(newValue, forKey: fetchWholeKey)
+            NotificationCenter.default.post(name: .settingsChanged, object: nil)
+        }
+    }
+
+    // MARK: - Finder の表示設定
+
+    /// フォルダごとの表示設定（`.DS_Store`）を Drive 側に保存するか。
+    ///
+    /// rclone は既定で `.DS_Store` を無視する（`--noappledouble`）。無視されると、Finder が
+    /// アイコンプレビューを切っても開き直すたびに戻る。保存を許すと設定が残り、
+    /// プレビューを切ったフォルダでは中身が読まれなくなる＝落ちてこない。
+    ///
+    /// 代償は Drive 側に `.DS_Store` が増えること。既定では入れない
+    static var keepsFinderSettings: Bool {
+        get { UserDefaults.standard.bool(forKey: finderSettingsKey) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: finderSettingsKey)
             NotificationCenter.default.post(name: .settingsChanged, object: nil)
         }
     }

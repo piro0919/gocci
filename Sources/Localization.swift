@@ -100,6 +100,14 @@ enum L {
         t("ブラウザで認証してください…", "Finish the sign-in in your browser…")
     }
     static var reconnected: String { t("認証し直しました", "Re-authenticated") }
+    static var keepFinderSettings: String {
+        t("Finder の表示設定を保存する", "Let Finder remember view settings")
+    }
+    static var keepFinderSettingsHint: String {
+        t(
+            "フォルダのアイコンプレビューを切れるようになり、覗いても中身が落ちてきません。Drive に .DS_Store が作られます",
+            "Lets you turn off icon previews per folder, so browsing downloads nothing. Adds .DS_Store files to your Drive")
+    }
     static var language: String { t("言語", "Language") }
     static var checkForUpdates: String { t("更新を確認", "Check for updates") }
     static func launchToggleFailed(_ reason: String) -> String {
