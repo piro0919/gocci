@@ -49,6 +49,10 @@ shadows cast on the background, or any other object.
 `Resources/gocci-icon.png` に置く。`build.sh` がここから `.icns` を組み立てる。
 正方形で 1024×1024 以上、背景は塗りつぶし（透過にしない）。
 
+**角は抜かなくてよい。** 生成した絵は角が黒く塗られた正方形で来るが、`build.sh` が
+丸く抜いてから `.icns` にする。縁に残る 1〜2 画素の黒い帯も、少し広げて描くことで
+枠の外へ追い出している。元の絵には手を入れない。
+
 ## 確認の仕方
 
 ```bash
