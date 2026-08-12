@@ -82,9 +82,9 @@ enum L {
     static var cacheMaxAge: String { t("ダウンロードを残す", "Keep downloads for") }
     static var cacheMaxSize: String { t("上限", "Limit") }
     static var cacheLimitsHint: String { "" }
-    static var launchAtLogin: String { t("ログイン時に起動する", "Launch at login") }
+    static var launchAtLogin: String { t("ログイン時に起動する", "Launch at Login") }
     static var fetchWhole: String {
-        t("再生を止めてもダウンロードを続ける", "Keep downloading after you stop playing")
+        t("再生を止めてもダウンロードを続ける", "Keep Downloading After You Stop Playing")
     }
     static var fetchWholeHint: String { "" }
     static var clientID: String { "client_id" }
@@ -94,15 +94,15 @@ enum L {
             "Googleが発行する認証情報です。入れないと2026年中に使えなくなります",
             "Google issues these. Without your own, this stops working during 2026")
     }
-    static var howToGetCredentials: String { t("取得の手順", "How to get one") }
+    static var howToGetCredentials: String { t("取得の手順", "How to Get One") }
     static var openCloudConsole: String { t("Google Cloud Console", "Google Cloud Console") }
-    static var reconnect: String { t("保存して認証し直す", "Save and re-authenticate") }
+    static var reconnect: String { t("保存して認証し直す", "Save and Re-authenticate") }
     static var reconnecting2: String {
         t("ブラウザで認証してください…", "Finish the sign-in in your browser…")
     }
     static var reconnected: String { t("認証し直しました", "Re-authenticated") }
     static var keepFinderSettings: String {
-        t("フォルダの表示設定を覚える", "Remember folder view settings")
+        t("フォルダの表示設定を覚える", "Remember Folder View Settings")
     }
     static var keepFinderSettingsHint: String {
         t(
@@ -110,7 +110,7 @@ enum L {
             "Folders with icon previews off download nothing when you open them")
     }
     static var language: String { t("言語", "Language") }
-    static var checkForUpdates: String { t("更新を確認", "Check for updates") }
+    static var checkForUpdates: String { t("更新を確認", "Check for Updates") }
     static func launchToggleFailed(_ reason: String) -> String {
         t("切り替えられませんでした: \(reason)", "Could not change it: \(reason)")
     }
