@@ -31,6 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let fetchingHeader = NSMenuItem()
     private let fetchingRows = (0..<5).map { _ in NSMenuItem() }
     private let fetchingMore = NSMenuItem()
+    /// キャッシュの使用量。今どれだけ手元に置いているかが、どこにも出ていなかった
+    private let cacheItem = NSMenuItem()
     private let fetchingSeparator = NSMenuItem.separator()
     /// 開いた時点で見せている道。文字を書き換えるときの照合に使う
     private var shownPaths: [String] = []
@@ -169,6 +171,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         fetchingMore.isEnabled = false
         menu.addItem(fetchingMore)
+
+        cacheItem.isEnabled = false
+        menu.addItem(cacheItem)
         menu.addItem(fetchingSeparator)
 
         menu.addItem(.separator())
@@ -278,6 +283,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             shownPaths = partials.prefix(fetchingRows.count).map(\.path)
         }
 
+        cacheItem.isHidden = mount.state != .mounted
+        cacheItem.attributedTitle = secondary(
+            L.cacheUsage(formatted(BadgeIndex.cacheBytes()), limitLabel()))
+
         let hidden = shownPaths.isEmpty || mount.state != .mounted
         fetchingHeader.isHidden = hidden
         fetchingMore.isHidden = hidden || partials.count <= fetchingRows.count
@@ -307,6 +316,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let relative = sender.representedObject as? String else { return }
         let path = "\(Settings.mountPoint)/\(relative)"
         NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
+    }
+
+    /// 上限の書き方を、使用量と揃える。設定には 50G のように入っている
+    private func limitLabel() -> String {
+        let limit = Settings.cacheMaxSize
+        guard !limit.isEmpty else { return "" }
+        if limit.hasSuffix("G") || limit.hasSuffix("M") || limit.hasSuffix("K") {
+            return limit + "B"
+        }
+        return limit
+    }
+
+    /// 量の書き方。GB と MB だけで足りる
+    private func formatted(_ bytes: Int64) -> String {
+        let gigabytes = Double(bytes) / 1_000_000_000
+        if gigabytes >= 1 { return String(format: "%.1fGB", gigabytes) }
+        return "\(bytes / 1_000_000)MB"
     }
 
     private func titleText(for state: MountState) -> NSAttributedString {

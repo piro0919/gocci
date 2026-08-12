@@ -36,6 +36,8 @@ enum BadgeIndex {
     private static var lastHeld: [String: Int64] = [:]
     private static var previousHeld: [String: Int64] = [:]
     private static var lastSizes: [String: Int64] = [:]
+    /// キャッシュ全体の使用量
+    private static var lastCacheBytes: Int64 = 0
     private static let progressLock = NSLock()
 
     /// 途中で止まっているファイルと、欠けている最初の位置。
@@ -56,6 +58,9 @@ enum BadgeIndex {
 
     /// 取得の途中にあるもの。
     ///
+    /// Finder が覗いただけのものは含めない。取りにいく対象ではないので、
+    /// 「取得中」と出すと実態と合わない（バッジ側でも雲として扱っている）。
+    ///
     /// **今まさに落ちてきているものを先に返す。** 割合の高い順に並べると、止まったまま
     /// 残っているものが上に居座り、動いている最中のファイルが一覧から漏れる
     static func partials() -> [(path: String, percent: Int, held: Int64, size: Int64)] {
@@ -64,7 +69,9 @@ enum BadgeIndex {
 
         return
             lastProgress
-            .filter { $0.value > 0 && $0.value < 100 }
+            .filter { path, percent in
+                percent > 0 && percent < 100 && (lastHeld[path] ?? 0) >= Paths.usedThreshold
+            }
             .map { path, percent in
                 (
                     path: path, percent: percent, held: lastHeld[path] ?? 0,
@@ -76,6 +83,13 @@ enum BadgeIndex {
                 return left.percent > right.percent
             }
             .map { (path: $0.path, percent: $0.percent, held: $0.held, size: $0.size) }
+    }
+
+    /// キャッシュが今どれだけ使われているか。書き出しのたびに測っておく
+    static func cacheBytes() -> Int64 {
+        progressLock.lock()
+        defer { progressLock.unlock() }
+        return lastCacheBytes
     }
 
     /// 今この瞬間、何かが落ちてきているか。前回の書き出しから割合が増えたものがあれば真
@@ -138,6 +152,7 @@ enum BadgeIndex {
             previousHeld = lastHeld
             lastHeld = held
             lastSizes = sizes
+            lastCacheBytes = held.values.reduce(0, +)
             progressLock.unlock()
 
             do {

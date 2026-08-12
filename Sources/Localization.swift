@@ -54,6 +54,11 @@ enum L {
     static func andMore(_ count: Int) -> String {
         t("ほか \(count) 件", "and \(count) more")
     }
+    static func cacheUsage(_ used: String, _ limit: String) -> String {
+        limit.isEmpty
+            ? t("キャッシュ \(used)", "Cache \(used)")
+            : t("キャッシュ \(used) / \(limit)", "Cache \(used) / \(limit)")
+    }
     static var restartFinder: String { t("Finder を再起動", "Restart Finder") }
     static var settings: String { t("設定…", "Settings…") }
     static var quit: String { t("終了", "Quit") }
