@@ -11,6 +11,8 @@ final class SettingsWindowController: NSWindowController {
     private let remoteField = NSTextField(string: "")
     private let cacheMaxAgeField = NSTextField(string: "")
     private let cacheMaxSizeField = NSTextField(string: "")
+    private let clientIDField = NSTextField(string: "")
+    private let clientSecretField = NSSecureTextField(string: "")
     private let launchCheckbox = NSButton(
         checkboxWithTitle: L.launchAtLogin, target: nil, action: nil)
     private let fetchWholeCheckbox = NSButton(
@@ -51,6 +53,7 @@ final class SettingsWindowController: NSWindowController {
         remoteField.placeholderString = "gdrive"
         cacheMaxAgeField.placeholderString = "30d"
         cacheMaxSizeField.placeholderString = "50G"
+        clientIDField.placeholderString = "…apps.googleusercontent.com"
 
         launchCheckbox.target = self
         launchCheckbox.action = #selector(toggleLaunch)
@@ -90,6 +93,10 @@ final class SettingsWindowController: NSWindowController {
             row(L.mountPoint, mountPointField, chooseMountPoint),
             row(L.cacheDir, cacheDirField, chooseCacheDir),
             row(L.remote, remoteField),
+            row(L.clientID, clientIDField),
+            row(L.clientSecret, clientSecretField),
+            hint(L.credentialsHint),
+            links(),
             row(L.cacheMaxAge, cacheMaxAgeField),
             row(L.cacheMaxSize, cacheMaxSizeField),
             hint(L.cacheLimitsHint),
@@ -145,6 +152,10 @@ final class SettingsWindowController: NSWindowController {
         remoteField.stringValue = Settings.remote
         cacheMaxAgeField.stringValue = Settings.cacheMaxAge
         cacheMaxSizeField.stringValue = Settings.cacheMaxSize
+
+        let credentials = RcloneConfig.values(of: Settings.remote)
+        clientIDField.stringValue = credentials["client_id"] ?? ""
+        clientSecretField.stringValue = credentials["client_secret"] ?? ""
         launchCheckbox.state = Settings.launchesAtLogin ? .on : .off
         fetchWholeCheckbox.state = Settings.fetchesWholeFile ? .on : .off
         report("")
@@ -216,6 +227,60 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func toggleFetchWhole() {
         Settings.fetchesWholeFile = fetchWholeCheckbox.state == .on
+    }
+
+    /// client_id を取りに行くための入口と、書き込みの実行
+    private func links() -> NSView {
+        let howTo = NSButton(
+            title: L.howToGetCredentials, target: self, action: #selector(openHowTo))
+        let console = NSButton(
+            title: L.openCloudConsole, target: self, action: #selector(openConsole))
+        let save = NSButton(title: L.reconnect, target: self, action: #selector(saveCredentials))
+        for button in [howTo, console] { button.bezelStyle = .accessoryBarAction }
+        save.bezelStyle = .rounded
+
+        let stack = NSStackView(views: [howTo, console, save])
+        stack.orientation = .horizontal
+        stack.spacing = 10
+        return stack
+    }
+
+    @objc private func openHowTo() {
+        NSWorkspace.shared.open(URL(string: "https://rclone.org/drive/#making-your-own-client-id")!)
+    }
+
+    @objc private func openConsole() {
+        NSWorkspace.shared.open(URL(string: "https://console.cloud.google.com/apis/credentials")!)
+    }
+
+    /// 書き込んでから認証をやり直す。client_id を変えると今の認証は無効になるため、
+    /// 書き込みだけでは繋がらなくなる
+    @objc private func saveCredentials() {
+        if let failure = RcloneConfig.setCredentials(
+            remote: Settings.remote, clientID: clientIDField.stringValue,
+            clientSecret: clientSecretField.stringValue)
+        {
+            report(failure)
+            return
+        }
+
+        report(L.reconnecting2)
+        messageLabel.textColor = .secondaryLabelColor
+
+        RcloneConfig.reconnect(remote: Settings.remote) { [weak self] failure in
+            guard let self else { return }
+            if let failure {
+                self.messageLabel.textColor = .systemRed
+                self.report(failure)
+                return
+            }
+            self.report(L.reconnected)
+
+            // 認証が変わったので繋ぎ直す。繋がっていないときは何もしない
+            if MountController.shared.state == .mounted {
+                MountController.shared.remount()
+            }
+        }
     }
 
     /// 添え書き。項目の下に一段小さく置く

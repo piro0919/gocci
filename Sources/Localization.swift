@@ -79,6 +79,20 @@ enum L {
             "少し覗いただけでも全部落ちてきます。切り替えは次に繋ぎ直したときから効きます",
             "Even a glance pulls the whole file. Takes effect the next time you reconnect")
     }
+    static var clientID: String { "client_id" }
+    static var clientSecret: String { "client_secret" }
+    static var credentialsHint: String {
+        t(
+            "rclone 共用のものは 2026年中に停止します。自分の client_id を作って入れてください",
+            "rclone's shared one stops working during 2026. Create your own and paste it here")
+    }
+    static var howToGetCredentials: String { t("取得の手順", "How to get one") }
+    static var openCloudConsole: String { t("Cloud Console を開く", "Open Cloud Console") }
+    static var reconnect: String { t("保存して認証し直す", "Save and re-authenticate") }
+    static var reconnecting2: String {
+        t("ブラウザで認証してください…", "Finish the sign-in in your browser…")
+    }
+    static var reconnected: String { t("認証し直しました", "Re-authenticated") }
     static var language: String { t("言語", "Language") }
     static var checkForUpdates: String { t("更新を確認", "Check for updates") }
     static func launchToggleFailed(_ reason: String) -> String {

@@ -110,6 +110,13 @@ rclone が共用している Google の client_id は **2026年中に停止す�
 **Gocci が持つのは、client_id と client_secret の入力欄と、取得手順の案内まで。**
 Cloud Console を開くリンクを添える。凝った案内は作らない。基本は自分が使う前提。
 
+実装した（2026-08-12）。値は UserDefaults に持たない。持ち主は rclone の設定ファイルで、
+二重に持てば必ずずれる。読み書きは `rclone config show` と `rclone config update` に頼む。
+
+**client_id を変えたら認証をやり直す必要がある。** 変えた時点で今の認証は無効になるので、
+書き込みだけでは繋がらなくなる。設定画面の「保存して認証し直す」は、書き込み →
+`rclone config reconnect`（ブラウザで同意）→ 繋ぎ直し、までを続けて行う。
+
 ### 最初のバージョンに入れるもの
 
 - Google アカウントを1つ繋ぐ

@@ -287,6 +287,24 @@ final class MountController {
         }
     }
 
+    /// 設定が変わったので繋ぎ直す。切ってから、外れたのを見届けて繋ぐ
+    func remount() {
+        guard state == .mounted else { return }
+        unmount()
+
+        var waited = 0.0
+        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+            guard let self else { return timer.invalidate() }
+            waited += 1
+            if self.state == .unmounted {
+                timer.invalidate()
+                self.mount()
+            } else if waited > 30 {
+                timer.invalidate()
+            }
+        }
+    }
+
     // MARK: - アンマウント
 
     func unmount() {
