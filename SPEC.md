@@ -69,10 +69,31 @@ CloudMounter は共有アイテムが散らかる。
 macFUSE を採らなかったのは、ここで脱落する人が多すぎるため。
 CloudMounter も Mountain Duck も File Provider に移っているのは、たぶん同じ判断。
 
-File Provider の置き場所が固定なのは確認済み（2026-08-12）。拡張が登録したドメインの実体は
-`~/Library/CloudStorage/<アプリ名>-<ドメイン名>` に OS が自動で作り、パスを指定する API が無い。
-[TidBITS](https://tidbits.com/2023/03/10/apples-file-provider-forces-mac-cloud-storage-changes/)、
-[Apple Developer Forums](https://developer.apple.com/forums/thread/718381)。
+**File Provider でも外付けに置ける。ここは 2026-08-13 に訂正した。**
+
+前日に「置き場所は `~/Library/CloudStorage` 固定」と書いたが、誤り。
+`NSFileProviderDomain(displayName:userInfo:volumeURL:)`（macOS 15 以上）でボリュームを
+指定できる。CloudMounter は実際にこれで外付けに置いていた（アプリのバイナリに同じ API と
+`NSFileProviderExternalVolumeHandling` があり、`/Volumes/HIKSEMI/.CloudStorage/Data/…` に
+OS 管理の領域が作られている）。
+
+**採れない理由は別にある。アドホック署名では File Provider のドメインを登録できない。**
+手元で確かめた（2026-08-13）:
+
+| 試したこと | 結果 |
+| --- | --- |
+| 外付けを指定して登録 | 失敗（-2001 提供元が見つからない） |
+| 置き場所を指定せず登録 | 同じ失敗。外付けの問題ではない |
+| 拡張を pluginkit に登録 | 一覧には載る。それでも失敗 |
+| アプリと拡張の両方に App Group と sandbox を付与 | 同じ失敗 |
+
+`fileproviderd` が `getDomainsForProviderIdentifier((null))` を返す。システムがアプリを
+提供元として識別できていない。App Group は「Team ID＋名前」の形で、Developer Program に
+登録した開発者にしか作れない（CloudMounter は `XS85JU6YZ3.com.eltima.cloudmounter`）。
+
+**つまり File Provider へ移るには年 99 USD が要る。** 払えば、外付けに置いたまま
+`dataless`（覗いても落ちてこない）と macOS 標準の雲バッジが手に入る。
+払わないなら NFS 方式のままで、Finder が中を読むぶんは落ちてくる。
 
 ### 実装で裏を取った内容（2026-08-12）
 
