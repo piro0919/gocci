@@ -73,6 +73,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Finder のバッジに使う一覧。拡張は自分では調べられないので、こちらが書く
         BadgeIndex.start()
 
+        // Finder の右クリックから「手元から削除」を頼まれる。拡張は自分では消せない
+        Evict.start()
+
         // 外付けが挿さったら繋ぐ。5秒の見回りでも拾えるが、待たされた感じになる。
         //
         // 通知が来た直後は、ボリュームがまだ落ち着いていない。その隙にマウントを始めると

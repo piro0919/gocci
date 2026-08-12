@@ -128,6 +128,34 @@ final class GocciFinderSync: FIFinderSync {
         for url in known { apply(to: url) }
     }
 
+    // MARK: - 右クリックの項目
+
+    /// 選んだファイルを手元から追い出す。実際に消すのはアプリで、ここでは頼むだけ。
+    /// サンドボックスの中からキャッシュには手が届かない
+    override func menu(for menuKind: FIMenuKind) -> NSMenu? {
+        guard menuKind == .contextualMenuForItems else { return nil }
+
+        let menu = NSMenu(title: "")
+        let item = menu.addItem(
+            withTitle: "手元から削除", action: #selector(evict(_:)), keyEquivalent: "")
+        item.target = self
+        return menu
+    }
+
+    @objc private func evict(_ sender: AnyObject?) {
+        let urls = FIFinderSyncController.default().selectedItemURLs() ?? []
+        guard !urls.isEmpty,
+            let support = FileManager.default.urls(
+                for: .applicationSupportDirectory, in: .userDomainMask
+            ).first
+        else { return }
+
+        let paths = urls.map(\.path)
+        guard let data = try? JSONSerialization.data(withJSONObject: paths) else { return }
+        try? data.write(to: support.appendingPathComponent("evict.json"), options: .atomic)
+        logger.info("手元から削除を頼んだ: \(paths.count) 件")
+    }
+
     // MARK: - 印の絵
 
     /// 段ごとの絵。記号をそのまま渡すと大きさも色も決まらないので、自分で描く。
