@@ -153,6 +153,16 @@ final class GocciFinderSync: FIFinderSync {
         guard let data = try? JSONSerialization.data(withJSONObject: paths) else { return }
         try? data.write(to: support.appendingPathComponent("evict.json"), options: .atomic)
         logger.info("手元から削除を頼んだ: \(paths.count) 件")
+
+        // 実際に消すのはアプリで、そこまで往復があるぶん間が空く。
+        // 押した本人の意図は分かっているので、印だけ先に雲へ戻す
+        for url in urls {
+            if let relative = Paths.relative(url.path, mountPoint: mountPoint) {
+                progress[relative] = 0
+            }
+            FIFinderSyncController.default().setBadgeIdentifier(
+                Step.of(0).identifier, for: url)
+        }
     }
 
     // MARK: - 印の絵

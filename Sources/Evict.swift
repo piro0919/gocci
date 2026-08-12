@@ -22,7 +22,7 @@ enum Evict {
 
     static func start() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in take() }
+        timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { _ in take() }
     }
 
     /// 頼まれた道を消して、頼みごとを片付ける
