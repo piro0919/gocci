@@ -117,10 +117,16 @@ enum BadgeIndex {
                 }
             }
 
+            // 拡張へ渡すのは見せ方を反映した値。Finder が覗いただけのものは雲にする。
+            // メニューには本当の値を出すので、こちらとは別に持っている
+            var badges: [String: Int] = [:]
+            for (path, percent) in progress {
+                badges[path] = Paths.badgePercent(percent: percent, held: held[path] ?? 0)
+            }
             let state: [String: Any] = [
                 "mountPoint": mountPoint,
                 // 道 → 落ちてきた割合（0〜100）。100 なら全部手元にある
-                "progress": progress,
+                "progress": badges,
             ]
 
             progressLock.lock()

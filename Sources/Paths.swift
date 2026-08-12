@@ -70,6 +70,18 @@ enum Paths {
         return covered < size ? covered : nil
     }
 
+    /// ここまで読まれていれば「使った」と見なす量。
+    ///
+    /// Finder はサムネイルのために動画の先頭を数 MB 読む。それを「使った」と扱うと、
+    /// 眺めただけのファイルが取得中に見えるし、続きまで取りにいってしまう
+    static let usedThreshold: Int64 = 32_000_000
+
+    /// バッジに出す割合。使ったと言えない量しか無いものは、クラウドのみとして見せる
+    static func badgePercent(percent: Int, held: Int64) -> Int {
+        if percent >= 100 { return 100 }
+        return held >= usedThreshold ? percent : 0
+    }
+
     /// バッジの段。10 きざみ。切り上げない。9割方まで来ていないのに「9割」とは出さない
     static func step(_ percent: Int) -> Int {
         max(0, min(100, percent / 10 * 10))

@@ -60,6 +60,12 @@ group("欠けている最初の位置") {
 // MARK: - バッジの段
 
 
+group("バッジに出す割合") {
+    check("覗かれただけなら雲", Paths.badgePercent(percent: 30, held: 5_000_000), 0)
+    check("使った量があれば、そのまま", Paths.badgePercent(percent: 30, held: 40_000_000), 30)
+    check("完了はいつでも 100", Paths.badgePercent(percent: 100, held: 5_000_000), 100)
+}
+
 group("バッジの段") {
     check("47% は 40 の段", Paths.step(47), 40)
     check("97% は 90 の段。100 にはしない", Paths.step(97), 90)
