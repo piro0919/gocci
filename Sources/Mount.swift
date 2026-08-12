@@ -267,7 +267,8 @@ final class MountController {
 
     /// そのマウントが生きているか。表に載っていても、相手が死んでいれば読み出しは返らない
     private func responds(_ mountPoint: String) -> Bool {
-        run("/bin/ls", [mountPoint], timeout: 8)
+        // 短く切ると、忙しいだけの rclone を落としたと見なす
+        run("/bin/ls", [mountPoint], timeout: 20)
     }
 
     private func createDirectoryIfNeeded(_ path: String) throws {
@@ -516,7 +517,14 @@ final class MountController {
     /// 応答を確かめる間隔
     private static let probeInterval: TimeInterval = 60
 
-    /// マウントが生きているかを確かめる。返らなければ落ちたものとして扱う
+    /// 続けて何回返らなければ落ちたと見なすか。
+    ///
+    /// 1回で落とすと、忙しいだけの rclone を殺してしまう。先読みで大量に落としている間は
+    /// 一覧が遅れることがあり、そのたびに繋ぎ直すと「サーバ接続が中断されました」が出る
+    private static let probeStrikes = 2
+    private var probeFailures = 0
+
+    /// マウントが生きているかを確かめる。続けて返らなければ落ちたものとして扱う
     private func probeIfDue() {
         guard state == .mounted, Date().timeIntervalSince(lastProbe) > Self.probeInterval else {
             return
@@ -525,8 +533,17 @@ final class MountController {
 
         let mountPoint = (Settings.mountPoint as NSString).standardizingPath
         queue.async { [weak self] in
-            guard let self, !self.responds(mountPoint) else { return }
-            logger.error("マウントが応答しない。落ちたものとして扱う")
+            guard let self else { return }
+
+            guard !self.responds(mountPoint) else {
+                self.probeFailures = 0
+                return
+            }
+
+            self.probeFailures += 1
+            logger.error("マウントが応答しない（\(self.probeFailures) 回目）")
+            guard self.probeFailures >= Self.probeStrikes else { return }
+            self.probeFailures = 0
 
             DispatchQueue.main.async {
                 guard self.state == .mounted else { return }
