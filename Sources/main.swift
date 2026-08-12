@@ -22,25 +22,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let menu = NSMenu()
 
     private let titleItem = NSMenuItem()
-    private let pathItem = NSMenuItem()
     private let finderItem = NSMenuItem()
     private let toggleItem = NSMenuItem()
 
-    /// 取得中の見出しと行。開いている最中に差し替えると描き直されないので、
-    /// あらかじめ置いておき、文字だけ書き換える
-    private let fetchingHeader = NSMenuItem()
-    private let fetchingRows = (0..<5).map { _ in NSMenuItem() }
-    private let fetchingMore = NSMenuItem()
-    /// キャッシュの使用量。今どれだけ手元に置いているかが、どこにも出ていなかった
-    private let cacheItem = NSMenuItem()
     /// バッジが出ていないときだけ見せる
     private let restartFinderItem = NSMenuItem()
-    private let fetchingSeparator = NSMenuItem.separator()
-    /// 開いた時点で見せている道。文字を書き換えるときの照合に使う
-    private var shownPaths: [String] = []
-    /// メニューを開いている間だけ動く時計
-    private var openTimer: Timer?
-    private var openSource: DispatchSourceTimer?
 
     private var settingsWindow = SettingsWindowController()
     /// 画面を作り直すかの判断に使う。文字列は組み立て時に焼き込まれるため
@@ -159,25 +145,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         titleItem.isEnabled = false
         menu.addItem(titleItem)
 
-        pathItem.isEnabled = false
-        menu.addItem(pathItem)
-
-        fetchingHeader.isEnabled = false
-        menu.addItem(fetchingHeader)
-
-        for row in fetchingRows {
-            row.action = #selector(revealFile(_:))
-            row.target = self
-            menu.addItem(row)
-        }
-
-        fetchingMore.isEnabled = false
-        menu.addItem(fetchingMore)
-
-        cacheItem.isEnabled = false
-        menu.addItem(cacheItem)
-        menu.addItem(fetchingSeparator)
-
         menu.addItem(.separator())
 
         finderItem.title = L.openInFinder
@@ -210,34 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         mount.refresh()
         refresh()
-        updateProgressSection(reset: true)
 
-        // 開いている間は通常の実行ループが止まるので、値が固まって見える。
-        // 別に時計を回して、取得中の行だけ動かし続ける
-        openTimer?.invalidate()
-        let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
-            self?.updateProgressSection(reset: false)
-        }
-        RunLoop.current.add(timer, forMode: .common)
-        openTimer = timer
-
-        // 経路2。別のスレッドから主スレッドへ投げる。どちらが届くかを測る
-        let source = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
-        source.schedule(deadline: .now() + 2, repeating: 2)
-        source.setEventHandler {
-            DispatchQueue.main.async { [weak self] in
-                self?.updateProgressSection(reset: false)
-            }
-        }
-        source.resume()
-        openSource = source
-    }
-
-    func menuDidClose(_ menu: NSMenu) {
-        openTimer?.invalidate()
-        openTimer = nil
-        openSource?.cancel()
-        openSource = nil
     }
 
     // MARK: - 表示の更新
@@ -250,10 +190,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // 状態は行の右端に出す。左の丸は色で、遠目にも接続の有無が分かるように
         titleItem.attributedTitle = titleText(for: state)
-
-        let path = Settings.mountPoint
-        pathItem.attributedTitle = secondary(path.isEmpty ? L.notSet : path)
-        pathItem.toolTip = path.isEmpty ? nil : path
 
         finderItem.isEnabled = state == .mounted
 
@@ -269,76 +205,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             toggleItem.title = state == .mounting ? L.mounting : L.unmounting
             toggleItem.isEnabled = false
         }
-    }
-
-    /// 取得中のものをメニューに出す。
-    ///
-    /// 裏で1本ずつ落としているので、Finder のバッジだけだと動いているのか止まっているのかが
-    /// 分からない。何が今どこまで来ているかを、開いたときに見えるようにする。
-    ///
-    /// 見せる顔ぶれは開いた時点で決める。開いている最中に行が増えたり減ったりすると、
-    /// 押そうとしたものが動く
-    private func updateProgressSection(reset: Bool) {
-        let partials = BadgeIndex.partials()
-        let byPath = Dictionary(partials.map { ($0.path, $0) }) { left, _ in left }
-
-        if reset {
-            shownPaths = partials.prefix(fetchingRows.count).map(\.path)
-        }
-
-        // 拡張が印を訊きに来ていれば、バッジは出ている。そのときは隠す
-        restartFinderItem.isHidden = mount.state != .mounted || BadgeIndex.badgesAreShowing()
-
-        cacheItem.isHidden = mount.state != .mounted
-        cacheItem.attributedTitle = secondary(
-            L.cacheUsage(formatted(BadgeIndex.cacheBytes()), limitLabel()))
-
-        let hidden = shownPaths.isEmpty || mount.state != .mounted
-        fetchingHeader.isHidden = hidden
-        fetchingMore.isHidden = hidden || partials.count <= fetchingRows.count
-        fetchingSeparator.isHidden = hidden
-
-        fetchingHeader.attributedTitle = secondary(L.fetching(partials.count))
-        fetchingMore.attributedTitle = secondary(L.andMore(partials.count - fetchingRows.count))
-
-        for (index, row) in fetchingRows.enumerated() {
-            guard index < shownPaths.count, !hidden else {
-                row.isHidden = true
-                continue
-            }
-            let path = shownPaths[index]
-            row.isHidden = false
-            row.representedObject = path
-            let current = byPath[path]
-            let name = (path as NSString).lastPathComponent
-            let amount = current.map {
-                " \($0.held / 1_000_000) / \($0.size / 1_000_000) MB"
-            } ?? ""
-            row.attributedTitle = secondary("\(current?.percent ?? 100)%\(amount)  \(name)")
-        }
-    }
-
-    @objc private func revealFile(_ sender: NSMenuItem) {
-        guard let relative = sender.representedObject as? String else { return }
-        let path = "\(Settings.mountPoint)/\(relative)"
-        NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
-    }
-
-    /// 上限の書き方を、使用量と揃える。設定には 50G のように入っている
-    private func limitLabel() -> String {
-        let limit = Settings.cacheMaxSize
-        guard !limit.isEmpty else { return "" }
-        if limit.hasSuffix("G") || limit.hasSuffix("M") || limit.hasSuffix("K") {
-            return limit + "B"
-        }
-        return limit
-    }
-
-    /// 量の書き方。GB と MB だけで足りる
-    private func formatted(_ bytes: Int64) -> String {
-        let gigabytes = Double(bytes) / 1_000_000_000
-        if gigabytes >= 1 { return String(format: "%.1fGB", gigabytes) }
-        return "\(bytes / 1_000_000)MB"
     }
 
     private func titleText(for state: MountState) -> NSAttributedString {
