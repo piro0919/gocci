@@ -25,8 +25,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let finderItem = NSMenuItem()
     private let toggleItem = NSMenuItem()
 
-    /// バッジが出ていないときだけ見せる
-    private let restartFinderItem = NSMenuItem()
 
     private var settingsWindow = SettingsWindowController()
     /// 画面を作り直すかの判断に使う。文字列は組み立て時に焼き込まれるため
@@ -156,14 +154,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         toggleItem.target = self
         menu.addItem(toggleItem)
 
-        // 更新でアプリを入れ替えると拡張も入れ替わり、Finder を再起動するまでバッジが
-        // 出なくなる。戻す手立ては要るが、普段は目に入らない方がよい。
-        // バッジが出ていないときだけ見せる
-        restartFinderItem.title = L.restartFinder
-        restartFinderItem.action = #selector(restartFinder)
-        restartFinderItem.target = self
-        menu.addItem(restartFinderItem)
-
         menu.addItem(.separator())
 
         let settings = NSMenuItem(
@@ -265,14 +255,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func openInFinder() {
         guard !Settings.mountPoint.isEmpty else { return }
         NSWorkspace.shared.open(URL(fileURLWithPath: Settings.mountPoint))
-    }
-
-    /// Finder を再起動する。開いているウィンドウが閉じるので、押した本人が選ぶ形にしてある
-    @objc private func restartFinder() {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
-        task.arguments = ["Finder"]
-        try? task.run()
     }
 
     @objc private func openSettings() {

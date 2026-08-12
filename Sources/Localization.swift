@@ -60,6 +60,11 @@ enum L {
             : t("ダウンロード済み \(used)／\(limit)", "Downloaded \(used) of \(limit)")
     }
     static var restartFinder: String { t("Finderを再起動", "Restart Finder") }
+    static var restartFinderHint: String {
+        t(
+            "更新後にバッジが出なくなったときに押します（Finderのウィンドウが閉じます）",
+            "Press it if badges stop appearing after an update (closes Finder windows)")
+    }
     static var settings: String { t("設定…", "Settings…") }
     static var quit: String { t("終了", "Quit") }
 

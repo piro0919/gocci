@@ -90,6 +90,16 @@ final class SettingsWindowController: NSWindowController {
             title: L.checkForUpdates, target: self, action: #selector(checkForUpdates))
         updateButton.bezelStyle = .rounded
 
+        // 更新でアプリを入れ替えると拡張も入れ替わり、Finder を再起動するまでバッジが出ない。
+        // 戻す手立ては要るが、普段の操作に混ぜる話ではないのでここに置く
+        let restartFinderButton = NSButton(
+            title: L.restartFinder, target: self, action: #selector(restartFinder))
+        restartFinderButton.bezelStyle = .rounded
+
+        let buttons = NSStackView(views: [updateButton, restartFinderButton])
+        buttons.orientation = .horizontal
+        buttons.spacing = 10
+
         let about = NSTextField(labelWithString: "Gocci \(version)")
         about.textColor = .secondaryLabelColor
         about.font = .systemFont(ofSize: 11)
@@ -115,7 +125,8 @@ final class SettingsWindowController: NSWindowController {
             row(L.language, languagePopUp),
             launchCheckbox,
             messageLabel,
-            updateButton,
+            buttons,
+            hint(L.restartFinderHint),
             about,
         ])
         stack.orientation = .vertical
@@ -315,6 +326,14 @@ final class SettingsWindowController: NSWindowController {
         label.font = .systemFont(ofSize: 11)
         label.textColor = .secondaryLabelColor
         return label
+    }
+
+    /// Finder を再起動する。開いているウィンドウが閉じるので、押した本人が選ぶ形にしてある
+    @objc private func restartFinder() {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+        task.arguments = ["Finder"]
+        try? task.run()
     }
 
     @objc private func checkForUpdates() {
