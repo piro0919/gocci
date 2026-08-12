@@ -84,6 +84,12 @@ enum L {
     static func unmountFailed(_ reason: String) -> String {
         t("切れませんでした: \(reason)", "Could not disconnect: \(reason)")
     }
+    static var mountPointIsLink: String {
+        t(
+            "マウント先がリンクです。実体のあるフォルダを選んでください",
+            "The mount point is a symlink. Choose a real folder")
+    }
+
     /// 自分では外せない。手でやってもらうしかないので、叩く命令をそのまま出す
     static func staleMountStuck(_ mountPoint: String) -> String {
         t(

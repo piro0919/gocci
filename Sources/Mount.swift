@@ -122,6 +122,16 @@ final class MountController {
             return
         }
 
+        // リンクの先へマウントしない。他のアプリがマウント先へのリンクを置いていることがあり、
+        // そこへ乗せにいくと失敗する。失敗の後始末で、リンクの先を含むボリュームごと
+        // 外されることもある（CloudMounter の GoogleDrive で踏んだ）
+        if let type = try? FileManager.default.attributesOfItem(atPath: mountPoint)[.type] as? FileAttributeType,
+            type == .typeSymbolicLink
+        {
+            state = .failed(L.mountPointIsLink)
+            return
+        }
+
         // 置き場所ごと無いときは待ちに回す。ここで作りにいくと、抜けている外付けの代わりに
         // 内蔵ディスクへ `/Volumes/HIKSEMI` を作ってしまい、そこへマウントすることになる
         guard Settings.mountPointParentExists else {
