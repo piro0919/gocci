@@ -26,6 +26,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let finderItem = NSMenuItem()
     private let toggleItem = NSMenuItem()
 
+    /// 取得中の行。開くたびに入れ替える
+    private var progressItems: [NSMenuItem] = []
+
     private var settingsWindow = SettingsWindowController()
     /// 画面を作り直すかの判断に使う。文字列は組み立て時に焼き込まれるため
     private var builtLanguage = Language.resolved
@@ -194,6 +197,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pathItem.attributedTitle = secondary(path.isEmpty ? L.notSet : path)
         pathItem.toolTip = path.isEmpty ? nil : path
 
+        updateProgressSection()
         finderItem.isEnabled = state == .mounted
 
         switch state {
@@ -208,6 +212,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             toggleItem.title = state == .mounting ? L.mounting : L.unmounting
             toggleItem.isEnabled = false
         }
+    }
+
+    /// 取得中のものをメニューに出す。
+    ///
+    /// 裏で1本ずつ落としているので、Finder のバッジだけだと動いているのか止まっているのかが
+    /// 分からない。何が今どこまで来ているかを、開いたときに見えるようにする
+    private func updateProgressSection() {
+        for item in progressItems { menu.removeItem(item) }
+        progressItems = []
+
+        let partials = BadgeIndex.partials()
+        guard !partials.isEmpty, mount.state == .mounted else { return }
+
+        var items: [NSMenuItem] = []
+
+        let header = NSMenuItem()
+        header.attributedTitle = secondary(L.fetching(partials.count))
+        header.isEnabled = false
+        items.append(header)
+
+        // 全部出すと縦に伸びすぎる。進んでいるものから数件だけ
+        for partial in partials.prefix(5) {
+            let item = NSMenuItem(
+                title: "", action: #selector(revealFile(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = partial.path
+            item.attributedTitle = secondary(
+                "\(partial.percent)%  \((partial.path as NSString).lastPathComponent)")
+            items.append(item)
+        }
+
+        if partials.count > 5 {
+            let more = NSMenuItem()
+            more.attributedTitle = secondary(L.andMore(partials.count - 5))
+            more.isEnabled = false
+            items.append(more)
+        }
+
+        items.append(.separator())
+
+        // 場所の行の下に差し込む
+        for (offset, item) in items.enumerated() {
+            menu.insertItem(item, at: 2 + offset)
+        }
+        progressItems = items
+    }
+
+    @objc private func revealFile(_ sender: NSMenuItem) {
+        guard let relative = sender.representedObject as? String else { return }
+        let path = "\(Settings.mountPoint)/\(relative)"
+        NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
     }
 
     private func titleText(for state: MountState) -> NSAttributedString {

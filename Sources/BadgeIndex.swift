@@ -43,6 +43,17 @@ enum BadgeIndex {
             .compactMap { path, _ in lastGaps[path].map { (path: path, gap: $0) } }
     }
 
+    /// 取得の途中にあるもの。進んでいる順に返す
+    static func partials() -> [(path: String, percent: Int)] {
+        progressLock.lock()
+        defer { progressLock.unlock() }
+        return
+            lastProgress
+            .filter { $0.value > 0 && $0.value < 100 }
+            .sorted { $0.value > $1.value }
+            .map { (path: $0.key, percent: $0.value) }
+    }
+
     /// 今この瞬間、何かが落ちてきているか。前回の書き出しから割合が増えたものがあれば真
     static func isFetching() -> Bool {
         progressLock.lock()
