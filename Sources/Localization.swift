@@ -48,6 +48,7 @@ enum L {
     static var openInFinder: String { t("Finder で開く", "Open in Finder") }
     static var connect: String { t("接続する", "Connect") }
     static var disconnect: String { t("接続を切る", "Disconnect") }
+    static var restartFinder: String { t("Finder を再起動", "Restart Finder") }
     static var settings: String { t("設定…", "Settings…") }
     static var quit: String { t("終了", "Quit") }
 

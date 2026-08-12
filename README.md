@@ -119,6 +119,13 @@ in [docs/art-prompt.md](docs/art-prompt.md). The menu bar mark is not an image â
 it is drawn as shapes in `Sources/Mark.swift`, so it stays sharp at 18pt and can
 express connected, disconnected, waiting and failed with the same silhouette.
 
+## After an update
+
+Updating replaces the Finder extension, and Finder keeps talking to the old
+copy until it is restarted â€” so the badges quietly stop appearing. The menu has
+a **Restart Finder** item for exactly this. It closes your Finder windows,
+which is why Gocci never does it on its own.
+
 ## Design decisions
 
 See [SPEC.md](./SPEC.md), which also records the approaches that were tried and
