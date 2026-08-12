@@ -18,12 +18,18 @@ enum Evict {
             .appendingPathComponent("evict.json")
     }
 
-    private static var timer: Timer?
+    /// 主スレッドの時計は、メニューを開いている間まったく動かない（実測した）。
+    /// 別のスレッドで回して、画面の操作に左右されないようにする
+    private static let queue = DispatchQueue(label: "io.kkweb.gocci.evict")
+    private static var timer: DispatchSourceTimer?
 
     static func start() {
-        timer?.invalidate()
-        let created = Timer(timeInterval: 1.5, repeats: true) { _ in take() }
-        RunLoop.main.add(created, forMode: .common)
+        timer?.cancel()
+
+        let created = DispatchSource.makeTimerSource(queue: queue)
+        created.schedule(deadline: .now() + 1.5, repeating: 1.5)
+        created.setEventHandler { take() }
+        created.resume()
         timer = created
     }
 

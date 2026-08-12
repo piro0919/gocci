@@ -21,7 +21,9 @@ enum BadgeIndex {
     }
 
     private static let queue = DispatchQueue(label: "io.kkweb.gocci.badge")
-    private static var timer: Timer?
+    /// 主スレッドの時計は、メニューを開いている間まったく動かない（実測した）。
+    /// 別のスレッドで回して、画面の操作に左右されないようにする
+    private static var timer: DispatchSourceTimer?
 
     /// 直近に書き出した割合。途中で止まっているものを探すのに使う
     private static var lastProgress: [String: Int] = [:]
@@ -29,6 +31,10 @@ enum BadgeIndex {
     private static var advancing = false
     /// 道 → 欠けている最初の位置
     private static var lastGaps: [String: Int64] = [:]
+    /// 道 → 手元にある量と、本来の大きさ。動いているかの判断と、MB での表示に使う
+    private static var lastHeld: [String: Int64] = [:]
+    private static var previousHeld: [String: Int64] = [:]
+    private static var lastSizes: [String: Int64] = [:]
     private static let progressLock = NSLock()
 
     /// 途中で止まっているファイルと、欠けている最初の位置。
@@ -43,15 +49,28 @@ enum BadgeIndex {
             .compactMap { path, _ in lastGaps[path].map { (path: path, gap: $0) } }
     }
 
-    /// 取得の途中にあるもの。進んでいる順に返す
-    static func partials() -> [(path: String, percent: Int)] {
+    /// 取得の途中にあるもの。
+    ///
+    /// **今まさに落ちてきているものを先に返す。** 割合の高い順に並べると、止まったまま
+    /// 残っているものが上に居座り、動いている最中のファイルが一覧から漏れる
+    static func partials() -> [(path: String, percent: Int, held: Int64, size: Int64)] {
         progressLock.lock()
         defer { progressLock.unlock() }
+
         return
             lastProgress
             .filter { $0.value > 0 && $0.value < 100 }
-            .sorted { $0.value > $1.value }
-            .map { (path: $0.key, percent: $0.value) }
+            .map { path, percent in
+                (
+                    path: path, percent: percent, held: lastHeld[path] ?? 0,
+                    size: lastSizes[path] ?? 0, moving: (lastHeld[path] ?? 0) > (previousHeld[path] ?? 0)
+                )
+            }
+            .sorted { left, right in
+                if left.moving != right.moving { return left.moving }
+                return left.percent > right.percent
+            }
+            .map { (path: $0.path, percent: $0.percent, held: $0.held, size: $0.size) }
     }
 
     /// 今この瞬間、何かが落ちてきているか。前回の書き出しから割合が増えたものがあれば真
@@ -64,10 +83,12 @@ enum BadgeIndex {
     /// 書き出しを始める。キャッシュは黙って増えたり消えたりするので、様子を見に行く
     static func start() {
         write()
-        timer?.invalidate()
-        // メニューを開いている間も回す必要がある。既定の作り方だと、そのあいだ止まる
-        let created = Timer(timeInterval: 5, repeats: true) { _ in write() }
-        RunLoop.main.add(created, forMode: .common)
+        timer?.cancel()
+
+        let created = DispatchSource.makeTimerSource(queue: queue)
+        created.schedule(deadline: .now() + 5, repeating: 5)
+        created.setEventHandler { write() }
+        created.resume()
         timer = created
     }
 
@@ -79,11 +100,15 @@ enum BadgeIndex {
         queue.async {
             var progress: [String: Int] = [:]
             var gaps: [String: Int64] = [:]
+            var held: [String: Int64] = [:]
+            var sizes: [String: Int64] = [:]
             if !mountPoint.isEmpty {
                 for root in cacheRoots(under: cacheDir, remote: remote, folder: "vfsMeta") {
-                    let (found, holes) = scan(root)
-                    progress.merge(found) { left, right in max(left, right) }
-                    gaps.merge(holes) { left, _ in left }
+                    let scanned = scan(root)
+                    progress.merge(scanned.progress) { left, right in max(left, right) }
+                    gaps.merge(scanned.gaps) { left, _ in left }
+                    held.merge(scanned.held) { left, _ in left }
+                    sizes.merge(scanned.sizes) { left, _ in left }
                 }
             }
 
@@ -99,6 +124,9 @@ enum BadgeIndex {
             }
             lastProgress = progress
             lastGaps = gaps
+            previousHeld = lastHeld
+            lastHeld = held
+            lastSizes = sizes
             progressLock.unlock()
 
             do {
@@ -133,11 +161,18 @@ enum BadgeIndex {
     ///
     /// rclone は `vfsMeta` に本来の大きさ（Size）と、落ちてきた範囲（Rs）を書いている。
     /// 実体があるかどうかだけを見ると、途中まで落ちたものまで「手元にある」と数えてしまう
-    private static func scan(_ root: String) -> ([String: Int], [String: Int64]) {
-        guard let walker = FileManager.default.enumerator(atPath: root) else { return ([:], [:]) }
+    private static func scan(_ root: String) -> (
+        progress: [String: Int], gaps: [String: Int64], held: [String: Int64],
+        sizes: [String: Int64]
+    ) {
+        guard let walker = FileManager.default.enumerator(atPath: root) else {
+            return ([:], [:], [:], [:])
+        }
 
         var found: [String: Int] = [:]
         var gaps: [String: Int64] = [:]
+        var held: [String: Int64] = [:]
+        var sizes: [String: Int64] = [:]
         for case let path as String in walker {
             var isDirectory: ObjCBool = false
             let full = "\(root)/\(path)"
@@ -157,10 +192,12 @@ enum BadgeIndex {
             let name = path.precomposedStringWithCanonicalMapping
             found[name] = Paths.percentage(size: size, ranges: ranges)
             gaps[name] = Paths.firstGap(size: size, ranges: ranges)
+            held[name] = ranges.reduce(Int64(0)) { $0 + $1.size }
+            sizes[name] = size
 
             // 数が膨らむと書き出しも読み込みも重くなる。実用の範囲で頭を打つ
             if found.count >= 20000 { break }
         }
-        return (found, gaps)
+        return (found, gaps, held, sizes)
     }
 }

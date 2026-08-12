@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var shownPaths: [String] = []
     /// メニューを開いている間だけ動く時計
     private var openTimer: Timer?
+    private var openSource: DispatchSourceTimer?
 
     private var settingsWindow = SettingsWindowController()
     /// 画面を作り直すかの判断に使う。文字列は組み立て時に焼き込まれるため
@@ -211,11 +212,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         RunLoop.current.add(timer, forMode: .common)
         openTimer = timer
+
+        // 経路2。別のスレッドから主スレッドへ投げる。どちらが届くかを測る
+        let source = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
+        source.schedule(deadline: .now() + 2, repeating: 2)
+        source.setEventHandler {
+            DispatchQueue.main.async { [weak self] in
+                self?.updateProgressSection(reset: false)
+            }
+        }
+        source.resume()
+        openSource = source
     }
 
     func menuDidClose(_ menu: NSMenu) {
         openTimer?.invalidate()
         openTimer = nil
+        openSource?.cancel()
+        openSource = nil
     }
 
     // MARK: - 表示の更新
@@ -258,7 +272,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 押そうとしたものが動く
     private func updateProgressSection(reset: Bool) {
         let partials = BadgeIndex.partials()
-        let byPath = Dictionary(partials.map { ($0.path, $0.percent) }) { left, _ in left }
+        let byPath = Dictionary(partials.map { ($0.path, $0) }) { left, _ in left }
 
         if reset {
             shownPaths = partials.prefix(fetchingRows.count).map(\.path)
@@ -280,8 +294,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let path = shownPaths[index]
             row.isHidden = false
             row.representedObject = path
-            row.attributedTitle = secondary(
-                "\(byPath[path] ?? 100)%  \((path as NSString).lastPathComponent)")
+            let current = byPath[path]
+            let name = (path as NSString).lastPathComponent
+            let amount = current.map {
+                " \($0.held / 1_000_000) / \($0.size / 1_000_000) MB"
+            } ?? ""
+            row.attributedTitle = secondary("\(current?.percent ?? 100)%\(amount)  \(name)")
         }
     }
 

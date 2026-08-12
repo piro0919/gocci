@@ -16,12 +16,18 @@ enum Finisher {
     /// 一度に追いかけるのは1つだけ。まとめてつつくと、外付けを繋ぎ直した直後などに
     /// 大量の取得が一斉に走る
     private static let interval: TimeInterval = 20
-    private static var timer: Timer?
+    /// 主スレッドの時計は、メニューを開いている間まったく動かない（実測した）。
+    /// 別のスレッドで回して、画面の操作に左右されないようにする
+    private static let queue = DispatchQueue(label: "io.kkweb.gocci.finish")
+    private static var timer: DispatchSourceTimer?
 
     static func start() {
-        timer?.invalidate()
-        let created = Timer(timeInterval: interval, repeats: true) { _ in tick() }
-        RunLoop.main.add(created, forMode: .common)
+        timer?.cancel()
+
+        let created = DispatchSource.makeTimerSource(queue: queue)
+        created.schedule(deadline: .now() + interval, repeating: interval)
+        created.setEventHandler { tick() }
+        created.resume()
         timer = created
     }
 
