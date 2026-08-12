@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 // Finder のバッジに使う一覧を書き出す。
@@ -103,7 +104,7 @@ enum BadgeIndex {
             var held: [String: Int64] = [:]
             var sizes: [String: Int64] = [:]
             if !mountPoint.isEmpty {
-                for root in cacheRoots(under: cacheDir, remote: remote, folder: "vfsMeta") {
+                for root in cacheRoots(under: cacheDir, remote: remote, folder: "vfs") {
                     let scanned = scan(root)
                     progress.merge(scanned.progress) { left, right in max(left, right) }
                     gaps.merge(scanned.gaps) { left, _ in left }
@@ -157,10 +158,13 @@ enum BadgeIndex {
             .map { "\(vfs)/\($0)" }
     }
 
-    /// キャッシュの控えを読んで、道ごとに「落ちてきた割合」を出す。
+    /// キャッシュの実ファイルを見て、道ごとの取得状況を出す。
     ///
-    /// rclone は `vfsMeta` に本来の大きさ（Size）と、落ちてきた範囲（Rs）を書いている。
-    /// 実体があるかどうかだけを見ると、途中まで落ちたものまで「手元にある」と数えてしまう
+    /// rclone の控え（`vfsMeta`）は当てにならない。取得が終わるまで書き換わらないことがあり、
+    /// 実際 4 秒ごとに 40MB 増えている最中でも、控えは 74MB のまま動かなかった。
+    ///
+    /// 実ファイルは穴あきで置かれているので、**実際に使っている量**がそのまま取得量になる。
+    /// 穴の位置も、空き領域の頭を訊けば分かる
     private static func scan(_ root: String) -> (
         progress: [String: Int], gaps: [String: Int64], held: [String: Int64],
         sizes: [String: Int64]
@@ -173,31 +177,37 @@ enum BadgeIndex {
         var gaps: [String: Int64] = [:]
         var held: [String: Int64] = [:]
         var sizes: [String: Int64] = [:]
-        for case let path as String in walker {
-            var isDirectory: ObjCBool = false
-            let full = "\(root)/\(path)"
-            guard FileManager.default.fileExists(atPath: full, isDirectory: &isDirectory),
-                !isDirectory.boolValue,
-                let data = FileManager.default.contents(atPath: full),
-                let meta = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            else { continue }
 
-            let size = (meta["Size"] as? NSNumber)?.int64Value ?? 0
-            let ranges = ((meta["Rs"] as? [[String: Any]]) ?? []).map {
-                (
-                    pos: ($0["Pos"] as? NSNumber)?.int64Value ?? 0,
-                    size: ($0["Size"] as? NSNumber)?.int64Value ?? 0
-                )
-            }
+        for case let path as String in walker {
+            let full = "\(root)/\(path)"
+
+            var info = stat()
+            guard stat(full, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else { continue }
+
+            let size = Int64(info.st_size)
+            // 使っている塊の数から、実際に手元にある量を出す
+            let bytes = min(Int64(info.st_blocks) * 512, size)
+
             let name = path.precomposedStringWithCanonicalMapping
-            found[name] = Paths.percentage(size: size, ranges: ranges)
-            gaps[name] = Paths.firstGap(size: size, ranges: ranges)
-            held[name] = Paths.coveredBytes(ranges: ranges)
             sizes[name] = size
+            held[name] = bytes
+            found[name] = size <= 0 ? 100 : Int(min(100, bytes * 100 / size))
+            gaps[name] = firstHole(in: full, size: size)
 
             // 数が膨らむと書き出しも読み込みも重くなる。実用の範囲で頭を打つ
             if found.count >= 20000 { break }
         }
         return (found, gaps, held, sizes)
+    }
+
+    /// 穴の頭。全部埋まっていれば nil
+    private static func firstHole(in path: String, size: Int64) -> Int64? {
+        let descriptor = open(path, O_RDONLY)
+        guard descriptor >= 0 else { return nil }
+        defer { close(descriptor) }
+
+        let hole = lseek(descriptor, 0, SEEK_HOLE)
+        guard hole >= 0, hole < size else { return nil }
+        return Int64(hole)
     }
 }
