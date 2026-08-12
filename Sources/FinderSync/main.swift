@@ -170,7 +170,9 @@ final class GocciFinderSync: FIFinderSync {
     /// 段ごとの絵。記号をそのまま渡すと大きさも色も決まらないので、自分で描く。
     /// 途中の段は円を時計回りに塗って、どこまで来たかを形で見せる
     private static func badge(_ step: Step) -> NSImage {
-        let side: CGFloat = 32
+        // Finder が確保する枠は決まっているので、こちらでできるのは枠いっぱいまで描くこと。
+        // 余白を残すと、そのぶん小さく見える。倍の解像度で作って粗さも避ける
+        let side: CGFloat = 64
         let image = NSImage(size: NSSize(width: side, height: side))
 
         image.lockFocus()
@@ -183,7 +185,7 @@ final class GocciFinderSync: FIFinderSync {
             draw(symbol: "checkmark.circle.fill", color: .systemGreen, in: side)
         default:
             let center = NSPoint(x: side / 2, y: side / 2)
-            let radius = side * 0.42
+            let radius = side * 0.48
             let box = NSRect(
                 x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
 
@@ -201,22 +203,26 @@ final class GocciFinderSync: FIFinderSync {
 
             NSColor.systemBlue.setStroke()
             let ring = NSBezierPath(ovalIn: box)
-            ring.lineWidth = side * 0.08
+            ring.lineWidth = side * 0.06
             ring.stroke()
         }
 
         return image
     }
 
+    /// 記号を枠いっぱいに描く。記号ごとに縦横の比が違うので、大きい辺を枠に合わせる
     private static func draw(symbol: String, color: NSColor, in side: CGFloat) {
         guard
             let mark = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-                .withSymbolConfiguration(.init(pointSize: side * 0.9, weight: .semibold))
+                .withSymbolConfiguration(.init(pointSize: side, weight: .semibold))
         else { return }
 
+        let scale = side / max(mark.size.width, mark.size.height)
+        let width = mark.size.width * scale
+        let height = mark.size.height * scale
         let rect = NSRect(
-            x: (side - mark.size.width) / 2, y: (side - mark.size.height) / 2,
-            width: mark.size.width, height: mark.size.height)
+            x: (side - width) / 2, y: (side - height) / 2, width: width, height: height)
+
         mark.draw(in: rect)
         color.set()
         rect.fill(using: .sourceAtop)
