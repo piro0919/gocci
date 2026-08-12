@@ -120,15 +120,20 @@ final class MountController {
         // 表に載っているかどうかだけで判断すると、相手の居ないマウントを繋がっていると
         // 報せることになる（rclone を止めた直後に起動し直すと、実際にそうなった）
         if Mounts.isMounted(mountPoint) {
+            // 自分が起動した rclone のマウントではない。前のアプリが残していったものか、
+            // 抜け殻か。どちらにせよ外して張り直す。
+            //
+            // 引き継ぐと、その rclone が死んでもこちらには終了が届かない。statfs は抜け殻でも
+            // 「マウント済み」と答えるので、繋がっているつもりのまま Finder だけが
+            // 永久に待つことになる（実際にそうなった）
+            logger.info("自分のものではないマウントがある。外して張り直す")
             state = .mounting
+
             queue.async { [weak self] in
                 guard let self else { return }
-                if self.responds(mountPoint) {
-                    self.finish(.mounted)
-                    return
-                }
-                logger.error("マウント表に載っているが応答しない。抜け殻として外す")
-                guard self.clearStaleMount(mountPoint) else {
+                self.process?.terminate()
+
+                if Mounts.isMounted(mountPoint), !self.forceUnmount(mountPoint) {
                     self.finish(.failed(L.staleMountStuck(mountPoint)))
                     return
                 }
@@ -454,6 +459,8 @@ final class MountController {
     private var restarts: [Date] = []
 
     private func recover() {
+        process = nil
+
         // 外付けごと消えたのなら、落ちたのではなく抜かれた。繋ぎ直さずに、挿し直されるのを待つ
         guard Settings.mountPointParentExists else {
             waitStartedAt = Date()
@@ -504,6 +511,37 @@ final class MountController {
         forceUnmount(mountPoint)
     }
 
+    /// 最後に応答を確かめた時刻。表に載っているかどうかだけでは、生きているか分からない
+    private var lastProbe = Date()
+    /// 応答を確かめる間隔
+    private static let probeInterval: TimeInterval = 60
+
+    /// マウントが生きているかを確かめる。返らなければ落ちたものとして扱う
+    private func probeIfDue() {
+        guard state == .mounted, Date().timeIntervalSince(lastProbe) > Self.probeInterval else {
+            return
+        }
+        lastProbe = Date()
+
+        let mountPoint = (Settings.mountPoint as NSString).standardizingPath
+        queue.async { [weak self] in
+            guard let self, !self.responds(mountPoint) else { return }
+            logger.error("マウントが応答しない。落ちたものとして扱う")
+
+            DispatchQueue.main.async {
+                guard self.state == .mounted else { return }
+
+                // 息はあるのに返事をしない rclone は、こちらで落とす。
+                // 生かしたまま張り直そうとしても、相手が場所を握ったままになる
+                if let task = self.process {
+                    kill(task.processIdentifier, SIGKILL)
+                    return  // 後始末は終了の受け取り口がやる
+                }
+                self.recover()
+            }
+        }
+    }
+
     /// 外から状態が変わることがある。外付けを抜かれた、別のアプリに外された、など
     func refresh() {
         if state == .waitingForDisk {
@@ -518,6 +556,8 @@ final class MountController {
         }
 
         guard state == .mounted || state == .unmounted else { return }
+        probeIfDue()
+
         let mounted = Mounts.isMounted(Settings.mountPoint)
         if mounted, state == .unmounted { state = .mounted }
         if !mounted, state == .mounted { state = .unmounted }
