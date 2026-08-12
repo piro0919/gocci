@@ -73,7 +73,8 @@ enum L {
     static var mountPoint: String { t("マウント先", "Mount point") }
     static var cacheDir: String { t("キャッシュの場所", "Cache location") }
     static var remote: String { t("接続先", "Account") }
-    static var choose: String { t("選ぶ…", "Choose…") }
+    /// macOS 本体の翻訳表（AppKit の Common.loctable）に合わせる。"Choose…" は「選択…」
+    static var choose: String { t("選択…", "Choose…") }
     static var notSet: String { t("未設定", "Not set") }
     static var cacheDefaultHint: String {
         t("マウント先と同じディスク", "Same disk as the mount point")
