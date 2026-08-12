@@ -34,9 +34,9 @@ final class GocciFinderSync: FIFinderSync {
 
         var label: String {
             switch percent {
-            case 0: return "クラウドのみ"
-            case 100: return "手元にある"
-            default: return "取得中 \(percent)%"
+            case 0: return "未ダウンロード"
+            case 100: return "ダウンロード済み"
+            default: return "ダウンロード中 \(percent)%"
             }
         }
     }
@@ -69,6 +69,21 @@ final class GocciFinderSync: FIFinderSync {
     override func requestBadgeIdentifier(for url: URL) {
         known.insert(url)
         apply(to: url)
+        noteBadgesAreShowing()
+    }
+
+    /// 印を描いたことをアプリへ伝える。アプリ側は「Finderを再起動」を出すかの判断に使う
+    private var lastNote = Date.distantPast
+    private func noteBadgesAreShowing() {
+        guard Date().timeIntervalSince(lastNote) > 60 else { return }
+        lastNote = Date()
+
+        guard
+            let support = FileManager.default.urls(
+                for: .applicationSupportDirectory, in: .userDomainMask
+            ).first
+        else { return }
+        try? Data().write(to: support.appendingPathComponent("badges.txt"))
     }
 
     private func apply(to url: URL) {
@@ -136,7 +151,7 @@ final class GocciFinderSync: FIFinderSync {
 
         let menu = NSMenu(title: "")
         let item = menu.addItem(
-            withTitle: "手元から削除", action: #selector(evict(_:)), keyEquivalent: "")
+            withTitle: "ダウンロードを削除", action: #selector(evict(_:)), keyEquivalent: "")
         item.target = self
         return menu
     }

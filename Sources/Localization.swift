@@ -35,39 +35,39 @@ enum L {
 
     // メニュー
     static var driveName: String { "Google Drive" }
-    static var mounted: String { t("接続中", "Connected") }
-    static var mounting: String { t("接続しています…", "Connecting…") }
-    static var unmounting: String { t("切っています…", "Disconnecting…") }
-    static var unmounted: String { t("未接続", "Not connected") }
+    static var mounted: String { t("マウント済み", "Mounted") }
+    static var mounting: String { t("マウント中…", "Mounting…") }
+    static var unmounting: String { t("マウント解除中…", "Unmounting…") }
+    static var unmounted: String { t("未マウント", "Not mounted") }
     static var waitingForDisk: String {
-        t("外付けを待っています…", "Waiting for the disk…")
+        t("ディスクを待機中…", "Waiting for the disk…")
     }
-    static var reconnecting: String { t("繋ぎ直しています…", "Reconnecting…") }
+    static var reconnecting: String { t("再マウント中…", "Remounting…") }
     static var failed: String { t("エラー", "Error") }
     static var mountPointUnset: String { t("マウント先が未設定です", "No mount point set") }
-    static var openInFinder: String { t("Finder で開く", "Open in Finder") }
-    static var connect: String { t("接続する", "Connect") }
-    static var disconnect: String { t("接続を切る", "Disconnect") }
+    static var openInFinder: String { t("Finderに表示", "Show in Finder") }
+    static var connect: String { t("マウント", "Mount") }
+    static var disconnect: String { t("マウント解除", "Unmount") }
     static func fetching(_ count: Int) -> String {
-        t("取得中 \(count) 件", "Fetching \(count)")
+        t("\(count)項目をダウンロード中", "Downloading \(count) items")
     }
     static func andMore(_ count: Int) -> String {
-        t("ほか \(count) 件", "and \(count) more")
+        t("ほか\(count)項目", "\(count) more")
     }
     static func cacheUsage(_ used: String, _ limit: String) -> String {
         limit.isEmpty
-            ? t("キャッシュ \(used)", "Cache \(used)")
-            : t("キャッシュ \(used) / \(limit)", "Cache \(used) / \(limit)")
+            ? t("ダウンロード済み \(used)", "Downloaded \(used)")
+            : t("ダウンロード済み \(used)／\(limit)", "Downloaded \(used) of \(limit)")
     }
-    static var restartFinder: String { t("Finder を再起動", "Restart Finder") }
+    static var restartFinder: String { t("Finderを再起動", "Restart Finder") }
     static var settings: String { t("設定…", "Settings…") }
     static var quit: String { t("終了", "Quit") }
 
     // 設定画面
-    static var settingsTitle: String { t("Gocci の設定", "Gocci Settings") }
+    static var settingsTitle: String { t("設定", "Settings") }
     static var mountPoint: String { t("マウント先", "Mount point") }
-    static var cacheDir: String { t("キャッシュ先", "Cache folder") }
-    static var remote: String { t("rclone のリモート名", "rclone remote") }
+    static var cacheDir: String { t("キャッシュの場所", "Cache location") }
+    static var remote: String { t("rcloneのリモート名", "rclone remote") }
     static var choose: String { t("選ぶ…", "Choose…") }
     static var notSet: String { t("未設定", "Not set") }
     static var cacheDefaultHint: String {
@@ -75,8 +75,8 @@ enum L {
             "空にすると、マウント先と同じディスクに置きます",
             "Leave empty to place it on the same disk as the mount point")
     }
-    static var cacheMaxAge: String { t("キャッシュを残す期間", "Keep the cache for") }
-    static var cacheMaxSize: String { t("キャッシュの上限", "Cache size limit") }
+    static var cacheMaxAge: String { t("キャッシュの保存期間", "Keep downloads for") }
+    static var cacheMaxSize: String { t("キャッシュの上限", "Cache limit") }
     static var cacheLimitsHint: String {
         t(
             "空にすると rclone の既定（1時間・上限なし）に戻ります。例: 30d、50G",
@@ -84,7 +84,7 @@ enum L {
     }
     static var launchAtLogin: String { t("ログイン時に起動する", "Launch at login") }
     static var fetchWhole: String {
-        t("再生を止めても最後まで取得する", "Keep fetching after you stop playing")
+        t("再生を止めてもダウンロードを続ける", "Keep downloading after you stop playing")
     }
     static var fetchWholeHint: String {
         t(
@@ -106,7 +106,7 @@ enum L {
     }
     static var reconnected: String { t("認証し直しました", "Re-authenticated") }
     static var keepFinderSettings: String {
-        t("Finder の表示設定を保存する", "Let Finder remember view settings")
+        t("Finderの表示設定を保存する", "Let Finder remember view settings")
     }
     static var keepFinderSettingsHint: String {
         t(

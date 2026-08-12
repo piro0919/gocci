@@ -85,6 +85,17 @@ enum BadgeIndex {
             .map { (path: $0.path, percent: $0.percent, held: $0.held, size: $0.size) }
     }
 
+    /// バッジが出ているか。拡張は印を求められると、その印を残す
+    static func badgesAreShowing() -> Bool {
+        let marker = stateURL.deletingLastPathComponent().appendingPathComponent("badges.txt")
+        guard
+            let stamp = (try? marker.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate
+        else { return false }
+        // 直近に印を描いていれば、Finder は訊きに来ている
+        return Date().timeIntervalSince(stamp) < 300
+    }
+
     /// キャッシュが今どれだけ使われているか。書き出しのたびに測っておく
     static func cacheBytes() -> Int64 {
         progressLock.lock()

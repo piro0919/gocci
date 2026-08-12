@@ -33,6 +33,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let fetchingMore = NSMenuItem()
     /// キャッシュの使用量。今どれだけ手元に置いているかが、どこにも出ていなかった
     private let cacheItem = NSMenuItem()
+    /// バッジが出ていないときだけ見せる
+    private let restartFinderItem = NSMenuItem()
     private let fetchingSeparator = NSMenuItem.separator()
     /// 開いた時点で見せている道。文字を書き換えるときの照合に使う
     private var shownPaths: [String] = []
@@ -187,12 +189,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         toggleItem.target = self
         menu.addItem(toggleItem)
 
-        // 更新でアプリを入れ替えると拡張も入れ替わり、Finder を再起動するまで
-        // バッジが出なくなる。黙って消えるので、戻す手立てを見える場所に置く
-        let restartFinder = NSMenuItem(
-            title: L.restartFinder, action: #selector(restartFinder), keyEquivalent: "")
-        restartFinder.target = self
-        menu.addItem(restartFinder)
+        // 更新でアプリを入れ替えると拡張も入れ替わり、Finder を再起動するまでバッジが
+        // 出なくなる。戻す手立ては要るが、普段は目に入らない方がよい。
+        // バッジが出ていないときだけ見せる
+        restartFinderItem.title = L.restartFinder
+        restartFinderItem.action = #selector(restartFinder)
+        restartFinderItem.target = self
+        menu.addItem(restartFinderItem)
 
         menu.addItem(.separator())
 
@@ -283,6 +286,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             shownPaths = partials.prefix(fetchingRows.count).map(\.path)
         }
 
+        // 拡張が印を訊きに来ていれば、バッジは出ている。そのときは隠す
+        restartFinderItem.isHidden = mount.state != .mounted || BadgeIndex.badgesAreShowing()
+
         cacheItem.isHidden = mount.state != .mounted
         cacheItem.attributedTitle = secondary(
             L.cacheUsage(formatted(BadgeIndex.cacheBytes()), limitLabel()))
@@ -345,7 +351,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 attributes: [.font: NSFont.menuFont(ofSize: 13)]))
         text.append(
             NSAttributedString(
-                string: "  \(label(for: state))",
+                string: " — \(label(for: state))",
                 attributes: [
                     .font: NSFont.menuFont(ofSize: 12),
                     .foregroundColor: NSColor.secondaryLabelColor,
