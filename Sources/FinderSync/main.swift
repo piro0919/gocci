@@ -16,22 +16,27 @@ let logger = Logger(subsystem: "io.kkweb.gocci", category: "finder")
 // 名前を GocciFinderSync にしてあるのは、FinderSync という枠組みの名前と衝突させないため。
 
 final class GocciFinderSync: FIFinderSync {
-    /// 落ちてきた割合をどう見せるか。段ごとに別の印として登録する
-    private enum Step: Int, CaseIterable {
-        case none = 0, quarter = 25, half = 50, most = 75, whole = 100
+    /// 落ちてきた割合をどう見せるか。段ごとに別の印として登録する。
+    ///
+    /// Finder のバッジは絵の差し替えなので、段の数だけ絵を作って持たせる。
+    /// 10 きざみにしてあるのは、円グラフで見て違いが分かる限界がその辺りのため
+    private struct Step {
+        let percent: Int
 
-        /// この割合はどの段か。達した段を採る
+        static let all = stride(from: 0, through: 100, by: 10).map { Step(percent: $0) }
+
+        /// この割合はどの段か。切り上げない。9割方まで来ていないのに「9割」とは出さない
         static func of(_ percent: Int) -> Step {
-            allCases.last { percent >= $0.rawValue } ?? .none
+            Step(percent: max(0, min(100, percent / 10 * 10)))
         }
 
-        var identifier: String { "io.kkweb.gocci.step\(rawValue)" }
+        var identifier: String { "io.kkweb.gocci.step\(percent)" }
 
         var label: String {
-            switch self {
-            case .none: return "クラウドのみ"
-            case .whole: return "手元にある"
-            default: return "取得中 \(rawValue)%"
+            switch percent {
+            case 0: return "クラウドのみ"
+            case 100: return "手元にある"
+            default: return "取得中 \(percent)%"
             }
         }
     }
@@ -48,7 +53,7 @@ final class GocciFinderSync: FIFinderSync {
         super.init()
 
         let controller = FIFinderSyncController.default()
-        for step in Step.allCases {
+        for step in Step.all {
             controller.setBadgeImage(
                 Self.badge(step), label: step.label, forBadgeIdentifier: step.identifier)
         }
@@ -134,10 +139,10 @@ final class GocciFinderSync: FIFinderSync {
         image.lockFocus()
         defer { image.unlockFocus() }
 
-        switch step {
-        case .none:
+        switch step.percent {
+        case 0:
             draw(symbol: "cloud.fill", color: .systemGray, in: side)
-        case .whole:
+        case 100:
             draw(symbol: "checkmark.circle.fill", color: .systemGreen, in: side)
         default:
             let center = NSPoint(x: side / 2, y: side / 2)
@@ -153,7 +158,7 @@ final class GocciFinderSync: FIFinderSync {
             pie.move(to: center)
             pie.appendArc(
                 withCenter: center, radius: radius,
-                startAngle: 90, endAngle: 90 - 360 * CGFloat(step.rawValue) / 100, clockwise: true)
+                startAngle: 90, endAngle: 90 - 360 * CGFloat(step.percent) / 100, clockwise: true)
             pie.close()
             pie.fill()
 
