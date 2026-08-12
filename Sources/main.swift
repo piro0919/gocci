@@ -67,6 +67,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         refresh()
 
+        // 更新の確認は起動時に1回だけ。見つかったときだけ画面が出る
+        Updater.shared.checkQuietly()
+
         // 外付けを挿した瞬間に繋ぐ。5秒の見回りでも拾えるが、待たされた感じになる
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didMountNotification, object: nil, queue: .main

@@ -65,6 +65,7 @@ enum L {
     }
     static var launchAtLogin: String { t("ログイン時に起動する", "Launch at login") }
     static var language: String { t("言語", "Language") }
+    static var checkForUpdates: String { t("更新を確認", "Check for updates") }
     static func launchToggleFailed(_ reason: String) -> String {
         t("切り替えられませんでした: \(reason)", "Could not change it: \(reason)")
     }

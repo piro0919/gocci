@@ -12,6 +12,21 @@ VERSION="${GOCCI_VERSION:-0.0.0}"
 # NFS マウントは rclone 側が Experimental と明記している機能なので、検証した版で固定する。
 # 上げるときは手元でマウント・読み書き・アンマウントを確かめてから
 RCLONE_VERSION="1.75.0"
+SPARKLE_VERSION="2.9.5"
+
+# 自動更新に Sparkle を使う。framework は大きいのでリポジトリに置かず、
+# 無ければ取ってくる（Vendor/ は git の管理外）
+if [ ! -d "Vendor/Sparkle.framework" ]; then
+  echo "Sparkle $SPARKLE_VERSION を取得します…"
+  mkdir -p Vendor
+  TMP="$(mktemp -d)"
+  curl -sL -o "$TMP/sparkle.tar.xz" \
+    "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+  tar xf "$TMP/sparkle.tar.xz" -C "$TMP"
+  cp -R "$TMP/Sparkle.framework" Vendor/
+  cp -R "$TMP/bin" Vendor/
+  rm -rf "$TMP"
+fi
 
 # rclone は同梱する。初回起動時に取りに行く方式は採らない（SPEC.md「rclone は同梱する」）。
 # バイナリ自体はリポジトリに置かず、無ければここで取ってくる
@@ -28,19 +43,24 @@ if [ ! -x "Vendor/rclone" ]; then
 fi
 
 rm -rf "$APP" build
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks"
 
 cp Vendor/rclone "$APP/Contents/MacOS/rclone"
+cp -R Vendor/Sparkle.framework "$APP/Contents/Frameworks/"
 
 swiftc \
   -parse-as-library \
   -target "$TARGET" \
   -O \
+  -F Vendor \
   -framework AppKit \
   -framework ServiceManagement \
+  -framework Sparkle \
+  -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
   -o "$APP/Contents/MacOS/Gocci" \
   Sources/Localization.swift Sources/Settings.swift Sources/Mount.swift \
-  Sources/Mark.swift Sources/Icon.swift Sources/SettingsWindow.swift Sources/main.swift
+  Sources/Mark.swift Sources/Icon.swift Sources/Updater.swift \
+  Sources/SettingsWindow.swift Sources/main.swift
 
 # アプリ本体のアイコン。元絵があれば .icns を組み立てる。
 # 無くてもビルドは通る（Finder では白紙のままになる）
@@ -87,12 +107,27 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <!-- Dock とアプリ切替に出さず、メニューバーだけに常駐させる -->
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
+
+  <!-- 自動更新（Sparkle）。確認は起動時に1回だけ行い、見つかったときだけ画面を出す。
+       この2つを false にしておかないと、初回起動で「自動で確認していいか」を尋ねる画面が出る -->
+  <key>SUFeedURL</key><string>https://github.com/piro0919/gocci/releases/latest/download/appcast.xml</string>
+  <!-- 更新の署名を確かめる公開鍵。対になる秘密鍵はログインキーチェーンにあり、これを失うと更新を配れなくなる。
+       Konechi と同じ鍵。Sparkle の鍵はアプリ単位ではなくキーチェーン単位で作られる -->
+  <key>SUPublicEDKey</key><string>qYQq1iewXYNDhhkJJak1nXUXmFkZ0jAF6Gr+pjB4Bxo=</string>
+  <key>SUEnableAutomaticChecks</key><false/>
+  <key>SUAutomaticallyUpdate</key><false/>
 </dict>
 </plist>
 PLIST
 
-# 同梱した実行ファイルは中から署名する。先にアプリを署名すると、後から中身が変わって壊れる
+# 同梱した実行ファイルと framework は中から署名する。先にアプリを署名すると、
+# 後から中身が変わって壊れる
 codesign --force --sign - "$APP/Contents/MacOS/rclone"
+codesign --force --sign - "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc" 2>/dev/null || true
+codesign --force --sign - "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Installer.xpc" 2>/dev/null || true
+codesign --force --sign - "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate" 2>/dev/null || true
+codesign --force --sign - "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app" 2>/dev/null || true
+codesign --force --sign - "$APP/Contents/Frameworks/Sparkle.framework"
 codesign --force --sign - "$APP"
 
 echo "できました: $(pwd)/$APP"

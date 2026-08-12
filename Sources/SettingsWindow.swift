@@ -67,6 +67,10 @@ final class SettingsWindowController: NSWindowController {
             title: L.choose, target: self, action: #selector(chooseCacheDir))
         chooseCacheDir.bezelStyle = .rounded
 
+        let updateButton = NSButton(
+            title: L.checkForUpdates, target: self, action: #selector(checkForUpdates))
+        updateButton.bezelStyle = .rounded
+
         let about = NSTextField(labelWithString: "Gocci \(version)")
         about.textColor = .secondaryLabelColor
         about.font = .systemFont(ofSize: 11)
@@ -78,6 +82,7 @@ final class SettingsWindowController: NSWindowController {
             row(L.language, languagePopUp),
             launchCheckbox,
             messageLabel,
+            updateButton,
             about,
         ])
         stack.orientation = .vertical
@@ -182,6 +187,10 @@ final class SettingsWindowController: NSWindowController {
             return
         }
         report("")
+    }
+
+    @objc private func checkForUpdates() {
+        Updater.shared.checkNow()
     }
 
     @objc private func changeLanguage() {
