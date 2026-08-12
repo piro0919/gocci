@@ -465,6 +465,21 @@ rclone の異常終了）ので、放っておくと途中のものが溜まる�
 
 同じ性質の機能を持つ iCloud Drive の言い方を採る。独自の言い回しを作らない。
 
+**訳語は推測しない。macOS 本体の翻訳表を引く。**
+
+```bash
+# 例: "Choose…" の日本語を調べる
+python3 -c "
+import plistlib
+d = plistlib.load(open('/System/Library/Frameworks/AppKit.framework/Versions/C/Resources/Common.loctable','rb'))
+print(d['ja']['Choose\u2026'])"   # → 選択…
+```
+
+`/System/Library/**/*.loctable` に Apple の訳が入っている。これで確かめた結果、
+「選ぶ…」は誤りで「選択…」が正しかった。Mount / Unmount / Show in Finder / Quit は一致。
+
+英語のボタンとメニューは**各単語の頭を大文字**にする（Check for Updates、How to Get One）。
+
 | 変更前 | 変更後 |
 | --- | --- |
 | Finder で開く | Finderに表示 |
