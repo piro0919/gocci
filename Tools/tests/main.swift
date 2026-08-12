@@ -43,6 +43,14 @@ group("落ちてきた割合") {
     check("大きさ 0 のファイルは手元にあるものとして扱う", Paths.percentage(size: 0, ranges: []), 100)
 }
 
+group("欠けている最初の位置") {
+    check("全部あれば無し", Paths.firstGap(size: 100, ranges: [(0, 100)]), Int64?.none)
+    check("何も無ければ先頭", Paths.firstGap(size: 100, ranges: []), Optional(Int64(0)))
+    check("先頭だけあるなら、その次", Paths.firstGap(size: 100, ranges: [(0, 30)]), Optional(Int64(30)))
+    check("途中に穴があるなら、その手前", Paths.firstGap(size: 100, ranges: [(0, 30), (50, 50)]), Optional(Int64(30)))
+    check("後ろだけあるなら先頭", Paths.firstGap(size: 100, ranges: [(50, 50)]), Optional(Int64(0)))
+}
+
 // MARK: - バッジの段
 
 

@@ -59,7 +59,7 @@ swiftc \
   -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
   -o "$APP/Contents/MacOS/Gocci" \
   Sources/Paths.swift Sources/Localization.swift Sources/Settings.swift Sources/Mount.swift \
-  Sources/RcloneConfig.swift Sources/Evict.swift \
+  Sources/RcloneConfig.swift Sources/Evict.swift Sources/Finisher.swift \
   Sources/Mark.swift Sources/Icon.swift Sources/Updater.swift Sources/BadgeIndex.swift \
   Sources/SettingsWindow.swift Sources/main.swift
 

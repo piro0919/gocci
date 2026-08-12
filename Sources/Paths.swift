@@ -51,6 +51,23 @@ enum Paths {
         return Int(min(100, held * 100 / size))
     }
 
+    /// 欠けている最初の位置。全部あるなら nil。
+    ///
+    /// 続きを取りにいくときは、ここを読ませる。先頭を読んでも、そこが既に手元にあれば
+    /// rclone は何も取りに行かない（先読みは「読んだ位置より先」を取る仕掛けのため）
+    static func firstGap(size: Int64, ranges: [(pos: Int64, size: Int64)]) -> Int64? {
+        guard size > 0 else { return nil }
+
+        let spans = ranges.map { ($0.pos, $0.pos + $0.size) }.sorted { $0.0 < $1.0 }
+        var covered: Int64 = 0
+        for span in spans {
+            if span.0 > covered { return covered }
+            covered = max(covered, span.1)
+            if covered >= size { return nil }
+        }
+        return covered < size ? covered : nil
+    }
+
     /// バッジの段。10 きざみ。切り上げない。9割方まで来ていないのに「9割」とは出さない
     static func step(_ percent: Int) -> Int {
         max(0, min(100, percent / 10 * 10))

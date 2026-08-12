@@ -23,6 +23,33 @@ enum BadgeIndex {
     private static let queue = DispatchQueue(label: "io.kkweb.gocci.badge")
     private static var timer: Timer?
 
+    /// 直近に書き出した割合。途中で止まっているものを探すのに使う
+    private static var lastProgress: [String: Int] = [:]
+    /// 前回の書き出しから割合が増えたものがあったか
+    private static var advancing = false
+    /// 道 → 欠けている最初の位置
+    private static var lastGaps: [String: Int64] = [:]
+    private static let progressLock = NSLock()
+
+    /// 途中で止まっているファイルと、欠けている最初の位置。
+    /// 進んでいる順に返す（あと少しのものから片付ける）
+    static func unfinished() -> [(path: String, gap: Int64)] {
+        progressLock.lock()
+        defer { progressLock.unlock() }
+        return
+            lastProgress
+            .filter { $0.value > 0 && $0.value < 100 }
+            .sorted { $0.value > $1.value }
+            .compactMap { path, _ in lastGaps[path].map { (path: path, gap: $0) } }
+    }
+
+    /// 今この瞬間、何かが落ちてきているか。前回の書き出しから割合が増えたものがあれば真
+    static func isFetching() -> Bool {
+        progressLock.lock()
+        defer { progressLock.unlock() }
+        return advancing
+    }
+
     /// 書き出しを始める。キャッシュは黙って増えたり消えたりするので、様子を見に行く
     static func start() {
         write()
@@ -37,9 +64,12 @@ enum BadgeIndex {
 
         queue.async {
             var progress: [String: Int] = [:]
+            var gaps: [String: Int64] = [:]
             if !mountPoint.isEmpty {
                 for root in cacheRoots(under: cacheDir, remote: remote, folder: "vfsMeta") {
-                    progress.merge(percentages(under: root)) { left, right in max(left, right) }
+                    let (found, holes) = scan(root)
+                    progress.merge(found) { left, right in max(left, right) }
+                    gaps.merge(holes) { left, _ in left }
                 }
             }
 
@@ -48,6 +78,14 @@ enum BadgeIndex {
                 // 道 → 落ちてきた割合（0〜100）。100 なら全部手元にある
                 "progress": progress,
             ]
+
+            progressLock.lock()
+            advancing = progress.contains { path, percent in
+                percent > (lastProgress[path] ?? 0)
+            }
+            lastProgress = progress
+            lastGaps = gaps
+            progressLock.unlock()
 
             do {
                 try FileManager.default.createDirectory(
@@ -81,10 +119,11 @@ enum BadgeIndex {
     ///
     /// rclone は `vfsMeta` に本来の大きさ（Size）と、落ちてきた範囲（Rs）を書いている。
     /// 実体があるかどうかだけを見ると、途中まで落ちたものまで「手元にある」と数えてしまう
-    private static func percentages(under root: String) -> [String: Int] {
-        guard let walker = FileManager.default.enumerator(atPath: root) else { return [:] }
+    private static func scan(_ root: String) -> ([String: Int], [String: Int64]) {
+        guard let walker = FileManager.default.enumerator(atPath: root) else { return ([:], [:]) }
 
         var found: [String: Int] = [:]
+        var gaps: [String: Int64] = [:]
         for case let path as String in walker {
             var isDirectory: ObjCBool = false
             let full = "\(root)/\(path)"
@@ -101,12 +140,13 @@ enum BadgeIndex {
                     size: ($0["Size"] as? NSNumber)?.int64Value ?? 0
                 )
             }
-            found[path.precomposedStringWithCanonicalMapping] =
-                Paths.percentage(size: size, ranges: ranges)
+            let name = path.precomposedStringWithCanonicalMapping
+            found[name] = Paths.percentage(size: size, ranges: ranges)
+            gaps[name] = Paths.firstGap(size: size, ranges: ranges)
 
             // 数が膨らむと書き出しも読み込みも重くなる。実用の範囲で頭を打つ
             if found.count >= 20000 { break }
         }
-        return found
+        return (found, gaps)
     }
 }
