@@ -26,8 +26,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let finderItem = NSMenuItem()
     private let toggleItem = NSMenuItem()
 
-    /// 取得中の行。開くたびに入れ替える
-    private var progressItems: [NSMenuItem] = []
+    /// 取得中の見出しと行。開いている最中に差し替えると描き直されないので、
+    /// あらかじめ置いておき、文字だけ書き換える
+    private let fetchingHeader = NSMenuItem()
+    private let fetchingRows = (0..<5).map { _ in NSMenuItem() }
+    private let fetchingMore = NSMenuItem()
+    private let fetchingSeparator = NSMenuItem.separator()
+    /// 開いた時点で見せている道。文字を書き換えるときの照合に使う
+    private var shownPaths: [String] = []
     /// メニューを開いている間だけ動く時計
     private var openTimer: Timer?
 
@@ -151,6 +157,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pathItem.isEnabled = false
         menu.addItem(pathItem)
 
+        fetchingHeader.isEnabled = false
+        menu.addItem(fetchingHeader)
+
+        for row in fetchingRows {
+            row.action = #selector(revealFile(_:))
+            row.target = self
+            menu.addItem(row)
+        }
+
+        fetchingMore.isEnabled = false
+        menu.addItem(fetchingMore)
+        menu.addItem(fetchingSeparator)
+
         menu.addItem(.separator())
 
         finderItem.title = L.openInFinder
@@ -182,12 +201,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         mount.refresh()
         refresh()
+        updateProgressSection(reset: true)
 
         // 開いている間は通常の実行ループが止まるので、値が固まって見える。
         // 別に時計を回して、取得中の行だけ動かし続ける
         openTimer?.invalidate()
         let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
-            self?.updateProgressSection()
+            self?.updateProgressSection(reset: false)
         }
         RunLoop.current.add(timer, forMode: .common)
         openTimer = timer
@@ -213,7 +233,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pathItem.attributedTitle = secondary(path.isEmpty ? L.notSet : path)
         pathItem.toolTip = path.isEmpty ? nil : path
 
-        updateProgressSection()
         finderItem.isEnabled = state == .mounted
 
         switch state {
@@ -233,46 +252,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 取得中のものをメニューに出す。
     ///
     /// 裏で1本ずつ落としているので、Finder のバッジだけだと動いているのか止まっているのかが
-    /// 分からない。何が今どこまで来ているかを、開いたときに見えるようにする
-    private func updateProgressSection() {
-        for item in progressItems { menu.removeItem(item) }
-        progressItems = []
-
+    /// 分からない。何が今どこまで来ているかを、開いたときに見えるようにする。
+    ///
+    /// 見せる顔ぶれは開いた時点で決める。開いている最中に行が増えたり減ったりすると、
+    /// 押そうとしたものが動く
+    private func updateProgressSection(reset: Bool) {
         let partials = BadgeIndex.partials()
-        guard !partials.isEmpty, mount.state == .mounted else { return }
+        let byPath = Dictionary(partials.map { ($0.path, $0.percent) }) { left, _ in left }
 
-        var items: [NSMenuItem] = []
-
-        let header = NSMenuItem()
-        header.attributedTitle = secondary(L.fetching(partials.count))
-        header.isEnabled = false
-        items.append(header)
-
-        // 全部出すと縦に伸びすぎる。進んでいるものから数件だけ
-        for partial in partials.prefix(5) {
-            let item = NSMenuItem(
-                title: "", action: #selector(revealFile(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = partial.path
-            item.attributedTitle = secondary(
-                "\(partial.percent)%  \((partial.path as NSString).lastPathComponent)")
-            items.append(item)
+        if reset {
+            shownPaths = partials.prefix(fetchingRows.count).map(\.path)
         }
 
-        if partials.count > 5 {
-            let more = NSMenuItem()
-            more.attributedTitle = secondary(L.andMore(partials.count - 5))
-            more.isEnabled = false
-            items.append(more)
-        }
+        let hidden = shownPaths.isEmpty || mount.state != .mounted
+        fetchingHeader.isHidden = hidden
+        fetchingMore.isHidden = hidden || partials.count <= fetchingRows.count
+        fetchingSeparator.isHidden = hidden
 
-        items.append(.separator())
+        fetchingHeader.attributedTitle = secondary(L.fetching(partials.count))
+        fetchingMore.attributedTitle = secondary(L.andMore(partials.count - fetchingRows.count))
 
-        // 場所の行の下に差し込む
-        for (offset, item) in items.enumerated() {
-            menu.insertItem(item, at: 2 + offset)
+        for (index, row) in fetchingRows.enumerated() {
+            guard index < shownPaths.count, !hidden else {
+                row.isHidden = true
+                continue
+            }
+            let path = shownPaths[index]
+            row.isHidden = false
+            row.representedObject = path
+            row.attributedTitle = secondary(
+                "\(byPath[path] ?? 100)%  \((path as NSString).lastPathComponent)")
         }
-        progressItems = items
     }
 
     @objc private func revealFile(_ sender: NSMenuItem) {
