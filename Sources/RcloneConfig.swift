@@ -21,6 +21,20 @@ enum RcloneConfig {
         return values
     }
 
+    /// 使える接続先（type が drive のもの）を並べる
+    static func driveRemotes() -> [String] {
+        guard let output = run(["config", "dump"]),
+            let data = output.data(using: .utf8),
+            let all = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]]
+        else { return [] }
+
+        return
+            all
+            .filter { ($0.value["type"] as? String) == "drive" }
+            .keys
+            .sorted()
+    }
+
     /// client_id と client_secret を書き込む。空文字を渡せば消える（rclone 共用のものに戻る）
     static func setCredentials(remote: String, clientID: String, clientSecret: String) -> String? {
         let result = run([

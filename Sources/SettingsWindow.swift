@@ -8,9 +8,9 @@ import AppKit
 final class SettingsWindowController: NSWindowController {
     private let mountPointField = NSTextField(string: "")
     private let cacheDirField = NSTextField(string: "")
-    private let remoteField = NSTextField(string: "")
-    private let cacheMaxAgeField = NSTextField(string: "")
-    private let cacheMaxSizeField = NSTextField(string: "")
+    private let remotePopUp = NSPopUpButton()
+    private let periodPopUp = NSPopUpButton()
+    private let limitPopUp = NSPopUpButton()
     private let clientIDField = NSTextField(string: "")
     private let clientSecretField = NSSecureTextField(string: "")
     private let launchCheckbox = NSButton(
@@ -44,17 +44,22 @@ final class SettingsWindowController: NSWindowController {
 
         window.delegate = self
 
-        for field in [
-            mountPointField, cacheDirField, remoteField, cacheMaxAgeField, cacheMaxSizeField,
-        ] {
+        for field in [mountPointField, cacheDirField] {
             field.target = self
             field.action = #selector(commitFields)
         }
         mountPointField.placeholderString = "/Volumes/…"
         cacheDirField.placeholderString = L.cacheDefaultHint
-        remoteField.placeholderString = "gdrive"
-        cacheMaxAgeField.placeholderString = "30d"
-        cacheMaxSizeField.placeholderString = "50G"
+        remotePopUp.target = self
+        remotePopUp.action = #selector(changeRemote)
+
+        periodPopUp.target = self
+        periodPopUp.action = #selector(changePeriod)
+        for period in CachePeriod.allCases { periodPopUp.addItem(withTitle: period.label) }
+
+        limitPopUp.target = self
+        limitPopUp.action = #selector(changeLimit)
+        for limit in CacheLimit.allCases { limitPopUp.addItem(withTitle: limit.label) }
         clientIDField.placeholderString = "…apps.googleusercontent.com"
 
         launchCheckbox.target = self
@@ -96,9 +101,10 @@ final class SettingsWindowController: NSWindowController {
             title: L.restartFinder, target: self, action: #selector(restartFinder))
         restartFinderButton.bezelStyle = .rounded
 
-        let buttons = NSStackView(views: [updateButton, restartFinderButton])
-        buttons.orientation = .horizontal
-        buttons.spacing = 10
+        let buttonRow = NSStackView(views: [updateButton, restartFinderButton])
+        buttonRow.orientation = .horizontal
+        buttonRow.spacing = 10
+        let buttons = aligned(buttonRow)
 
         let about = NSTextField(labelWithString: "Gocci \(version)")
         about.textColor = .secondaryLabelColor
@@ -107,27 +113,25 @@ final class SettingsWindowController: NSWindowController {
         let stack = NSStackView(views: [
             row(L.mountPoint, mountPointField, chooseMountPoint),
             row(L.cacheDir, cacheDirField, chooseCacheDir),
-            row(L.remote, remoteField),
+            row(L.remote, remotePopUp),
             divider(),
             row(L.clientID, clientIDField),
             row(L.clientSecret, clientSecretField),
             hint(L.credentialsHint),
             links(),
             divider(),
-            row(L.cacheMaxAge, cacheMaxAgeField),
-            row(L.cacheMaxSize, cacheMaxSizeField),
-            hint(L.cacheLimitsHint),
-            fetchWholeCheckbox,
-            hint(L.fetchWholeHint),
-            finderSettingsCheckbox,
+            row(L.cacheMaxAge, periodPopUp),
+            row(L.cacheMaxSize, limitPopUp),
+            checkboxRow(fetchWholeCheckbox),
+            checkboxRow(finderSettingsCheckbox),
             hint(L.keepFinderSettingsHint),
             divider(),
             row(L.language, languagePopUp),
-            launchCheckbox,
+            checkboxRow(launchCheckbox),
             messageLabel,
             buttons,
             hint(L.restartFinderHint),
-            about,
+            aligned(about),
         ])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -150,29 +154,40 @@ final class SettingsWindowController: NSWindowController {
         window.setContentSize(NSSize(width: 460, height: content.fittingSize.height))
     }
 
+    /// 見出しの幅。入力欄の左端を一列に揃えるための基準
+    private static let labelWidth: CGFloat = 130
+
     private func row(_ title: String, _ controls: NSView...) -> NSView {
         let label = NSTextField(labelWithString: title)
-        // 見出しの幅を揃えて、入力欄の左端を一列にする
-        label.widthAnchor.constraint(equalToConstant: 120).isActive = true
+        label.widthAnchor.constraint(equalToConstant: Self.labelWidth).isActive = true
         label.alignment = .right
 
         for control in controls where control is NSTextField {
-            control.widthAnchor.constraint(greaterThanOrEqualToConstant: 220).isActive = true
+            control.widthAnchor.constraint(greaterThanOrEqualToConstant: 250).isActive = true
         }
 
         let stack = NSStackView(views: [label] + controls)
         stack.orientation = .horizontal
+        stack.alignment = .firstBaseline
         stack.spacing = 10
         return stack
     }
+
+    /// チェックの行
+    private func checkboxRow(_ checkbox: NSButton) -> NSView { aligned(checkbox) }
 
     func show() {
         // 開くたびに読み直す。設定画面の外（システム設定）で変えられることがあるため
         mountPointField.stringValue = Settings.mountPoint
         cacheDirField.stringValue = Settings.cacheDir
-        remoteField.stringValue = Settings.remote
-        cacheMaxAgeField.stringValue = Settings.cacheMaxAge
-        cacheMaxSizeField.stringValue = Settings.cacheMaxSize
+        let remotes = RcloneConfig.driveRemotes()
+        remotePopUp.removeAllItems()
+        remotePopUp.addItems(withTitles: remotes.isEmpty ? [Settings.remote] : remotes)
+        remotePopUp.selectItem(withTitle: Settings.remote)
+        if remotePopUp.indexOfSelectedItem < 0 { remotePopUp.selectItem(at: 0) }
+
+        periodPopUp.selectItem(at: CachePeriod.allCases.firstIndex(of: Settings.cachePeriod) ?? 0)
+        limitPopUp.selectItem(at: CacheLimit.allCases.firstIndex(of: Settings.cacheLimit) ?? 0)
 
         let credentials = RcloneConfig.values(of: Settings.remote)
         clientIDField.stringValue = credentials["client_id"] ?? ""
@@ -204,15 +219,7 @@ final class SettingsWindowController: NSWindowController {
         if cacheDirField.stringValue != Settings.cacheDir {
             Settings.cacheDir = cacheDirField.stringValue
         }
-        if remoteField.stringValue != Settings.remote {
-            Settings.remote = remoteField.stringValue
-        }
-        if cacheMaxAgeField.stringValue != Settings.cacheMaxAge {
-            Settings.cacheMaxAge = cacheMaxAgeField.stringValue
-        }
-        if cacheMaxSizeField.stringValue != Settings.cacheMaxSize {
-            Settings.cacheMaxSize = cacheMaxSizeField.stringValue
-        }
+
     }
 
     @objc private func chooseMountPoint() {
@@ -249,6 +256,23 @@ final class SettingsWindowController: NSWindowController {
         report("")
     }
 
+    @objc private func changeRemote() {
+        guard let title = remotePopUp.titleOfSelectedItem else { return }
+        Settings.remote = title
+    }
+
+    @objc private func changePeriod() {
+        let index = periodPopUp.indexOfSelectedItem
+        guard CachePeriod.allCases.indices.contains(index) else { return }
+        Settings.cachePeriod = CachePeriod.allCases[index]
+    }
+
+    @objc private func changeLimit() {
+        let index = limitPopUp.indexOfSelectedItem
+        guard CacheLimit.allCases.indices.contains(index) else { return }
+        Settings.cacheLimit = CacheLimit.allCases[index]
+    }
+
     @objc private func toggleFinderSettings() {
         Settings.keepsFinderSettings = finderSettingsCheckbox.state == .on
     }
@@ -268,6 +292,17 @@ final class SettingsWindowController: NSWindowController {
         save.bezelStyle = .rounded
 
         let stack = NSStackView(views: [howTo, console, save])
+        stack.orientation = .horizontal
+        stack.spacing = 10
+        return aligned(stack)
+    }
+
+    /// 見出しのぶんだけ空けて、入力欄の列に揃える
+    private func aligned(_ view: NSView) -> NSView {
+        let spacer = NSView()
+        spacer.widthAnchor.constraint(equalToConstant: Self.labelWidth).isActive = true
+
+        let stack = NSStackView(views: [spacer, view])
         stack.orientation = .horizontal
         stack.spacing = 10
         return stack
@@ -322,10 +357,13 @@ final class SettingsWindowController: NSWindowController {
 
     /// 添え書き。項目の下に一段小さく置く
     private func hint(_ text: String) -> NSView {
+        guard !text.isEmpty else { return NSView() }
+
         let label = NSTextField(labelWithString: text)
         label.font = .systemFont(ofSize: 11)
         label.textColor = .secondaryLabelColor
-        return label
+
+        return aligned(label)
     }
 
     /// Finder を再起動する。開いているウィンドウが閉じるので、押した本人が選ぶ形にしてある

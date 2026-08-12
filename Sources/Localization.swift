@@ -72,32 +72,26 @@ enum L {
     static var settingsTitle: String { t("設定", "Settings") }
     static var mountPoint: String { t("マウント先", "Mount point") }
     static var cacheDir: String { t("キャッシュの場所", "Cache location") }
-    static var remote: String { t("rcloneのリモート名", "rclone remote") }
+    static var remote: String { t("接続先", "Account") }
     static var choose: String { t("選ぶ…", "Choose…") }
     static var notSet: String { t("未設定", "Not set") }
     static var cacheDefaultHint: String {
-        t("空にするとマウント先と同じディスク", "Empty means the mount point's disk")
+        t("マウント先と同じディスク", "Same disk as the mount point")
     }
-    static var cacheMaxAge: String { t("キャッシュの保存期間", "Keep downloads for") }
-    static var cacheMaxSize: String { t("キャッシュの上限", "Cache limit") }
-    static var cacheLimitsHint: String {
-        t("例: 30d、50G。空にするとrcloneの既定に戻ります", "e.g. 30d, 50G. Empty uses rclone's defaults")
-    }
+    static var cacheMaxAge: String { t("ダウンロードを残す", "Keep downloads for") }
+    static var cacheMaxSize: String { t("上限", "Limit") }
+    static var cacheLimitsHint: String { "" }
     static var launchAtLogin: String { t("ログイン時に起動する", "Launch at login") }
     static var fetchWhole: String {
         t("再生を止めてもダウンロードを続ける", "Keep downloading after you stop playing")
     }
-    static var fetchWholeHint: String {
-        t(
-            "実際に使ったファイルだけが対象です",
-            "Only files you actually used")
-    }
+    static var fetchWholeHint: String { "" }
     static var clientID: String { "client_id" }
     static var clientSecret: String { "client_secret" }
     static var credentialsHint: String {
         t(
-            "rclone共用のものは2026年中に停止します",
-            "rclone's shared one stops working during 2026")
+            "Googleが発行する認証情報です。入れないと2026年中に使えなくなります",
+            "Google issues these. Without your own, this stops working during 2026")
     }
     static var howToGetCredentials: String { t("取得の手順", "How to get one") }
     static var openCloudConsole: String { t("Google Cloud Console", "Google Cloud Console") }
@@ -107,12 +101,12 @@ enum L {
     }
     static var reconnected: String { t("認証し直しました", "Re-authenticated") }
     static var keepFinderSettings: String {
-        t("Finderの表示設定を保存する", "Let Finder remember view settings")
+        t("フォルダの表示設定を覚える", "Remember folder view settings")
     }
     static var keepFinderSettingsHint: String {
         t(
-            "アイコンプレビューを切れるようになります（Driveに.DS_Storeが作られます）",
-            "Lets you turn off icon previews (adds .DS_Store to your Drive)")
+            "アイコンプレビューを切ったフォルダは、開いてもダウンロードされません",
+            "Folders with icon previews off download nothing when you open them")
     }
     static var language: String { t("言語", "Language") }
     static var checkForUpdates: String { t("更新を確認", "Check for updates") }

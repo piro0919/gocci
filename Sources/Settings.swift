@@ -6,6 +6,45 @@ import ServiceManagement
 // 数が少ないので UserDefaults に直接置く。ログイン時の起動だけは OS 側が持つ状態なので、
 // こちらでは持たず ServiceManagement に問い合わせる。二重に持つと必ずずれる。
 
+/// キャッシュを残す期間。rclone へ渡す値と、画面に出す名前を持つ
+enum CachePeriod: String, CaseIterable {
+    case day = "24h"
+    case week = "168h"
+    case month = "720h"
+    case forever = "off"
+
+    var label: String {
+        switch self {
+        case .day: return L.t("1日", "1 day")
+        case .week: return L.t("1週間", "1 week")
+        case .month: return L.t("30日", "30 days")
+        case .forever: return L.t("消さない", "Never")
+        }
+    }
+
+    /// rclone へ渡す値。消さない場合は渡さない
+    var argument: String { self == .forever ? "" : rawValue }
+}
+
+/// キャッシュの上限
+enum CacheLimit: String, CaseIterable {
+    case small = "10G"
+    case medium = "50G"
+    case large = "200G"
+    case unlimited = "off"
+
+    var label: String {
+        switch self {
+        case .small: return "10GB"
+        case .medium: return "50GB"
+        case .large: return "200GB"
+        case .unlimited: return L.t("無制限", "No limit")
+        }
+    }
+
+    var argument: String { self == .unlimited ? "" : rawValue }
+}
+
 enum Settings {
     private static let mountPointKey = "mountPoint"
     private static let cacheDirKey = "cacheDir"
@@ -99,24 +138,32 @@ enum Settings {
     ///
     /// rclone の既定は 1 時間で、それだと一度落としたものがすぐ消える。
     /// 「開いたものは手元に残る」に寄せて 30 日を既定にする。空にすると rclone の既定に戻る
-    static var cacheMaxAge: String {
-        get { UserDefaults.standard.object(forKey: cacheMaxAgeKey) as? String ?? "30d" }
+    static var cachePeriod: CachePeriod {
+        get {
+            (UserDefaults.standard.string(forKey: cacheMaxAgeKey)).flatMap(CachePeriod.init) ?? .month
+        }
         set {
-            UserDefaults.standard.set(newValue, forKey: cacheMaxAgeKey)
+            UserDefaults.standard.set(newValue.rawValue, forKey: cacheMaxAgeKey)
             NotificationCenter.default.post(name: .settingsChanged, object: nil)
         }
     }
 
+    static var cacheMaxAge: String { cachePeriod.argument }
+
     /// キャッシュ全体の上限（`--vfs-cache-max-size`）。
     ///
     /// rclone の既定は上限なし。寿命を延ばす以上、歯止めが要る。空にすると上限なしに戻る
-    static var cacheMaxSize: String {
-        get { UserDefaults.standard.object(forKey: cacheMaxSizeKey) as? String ?? "50G" }
+    static var cacheLimit: CacheLimit {
+        get {
+            (UserDefaults.standard.string(forKey: cacheMaxSizeKey)).flatMap(CacheLimit.init) ?? .medium
+        }
         set {
-            UserDefaults.standard.set(newValue, forKey: cacheMaxSizeKey)
+            UserDefaults.standard.set(newValue.rawValue, forKey: cacheMaxSizeKey)
             NotificationCenter.default.post(name: .settingsChanged, object: nil)
         }
     }
+
+    static var cacheMaxSize: String { cacheLimit.argument }
 
     // MARK: - 先読み
 
