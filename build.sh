@@ -65,20 +65,20 @@ swiftc \
 # アプリ本体のアイコン。元絵があれば .icns を組み立てる。
 # 無くてもビルドは通る（Finder では白紙のままになる）
 if [ -f Resources/gocci-icon.png ]; then
-  # 生成した絵は角が塗り潰された正方形で来る。抜かずに .icns にすると角が黒く出るので、
-  # ここで丸く抜く。元の絵には手を入れない
+  # 生成した絵は角丸を自分で描いてきて、その外側が黒い。macOS 26 は透過の無い正方形を
+  # 求めるので、抜くのではなく背景で埋める。元の絵には手を入れない
   mkdir -p build
   swiftc -O -target "$TARGET" -framework AppKit \
     -o build/icon Sources/Mark.swift Tools/icon/main.swift
-  ./build/icon mask Resources/gocci-icon.png build/gocci-icon-masked.png >/dev/null
+  ./build/icon square Resources/gocci-icon.png build/gocci-icon-square.png >/dev/null
 
   ICONSET="build/Gocci.iconset"
   rm -rf "$ICONSET"
   mkdir -p "$ICONSET"
   for size in 16 32 128 256 512; do
-    sips -z $size $size build/gocci-icon-masked.png \
+    sips -z $size $size build/gocci-icon-square.png \
       --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
-    sips -z $((size * 2)) $((size * 2)) build/gocci-icon-masked.png \
+    sips -z $((size * 2)) $((size * 2)) build/gocci-icon-square.png \
       --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
   done
   mkdir -p "$APP/Contents/Resources"

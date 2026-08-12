@@ -16,7 +16,9 @@ Draw an app icon for a small macOS menu bar utility called "Gocci". The app
 mounts Google Drive as a disk on the Mac, so cloud storage can be used like an
 external drive.
 
-Shape: a rounded square, the standard macOS app icon shape, filled edge to edge.
+Shape: a full square. Do NOT round the corners and do NOT leave any
+transparency — macOS rounds the corners itself. The background must reach all
+four corners.
 
 Background: a smooth diagonal gradient from a bright teal in the upper left to
 a deep navy blue in the lower right. Nothing else in the background — no
@@ -49,9 +51,13 @@ shadows cast on the background, or any other object.
 `Resources/gocci-icon.png` に置く。`build.sh` がここから `.icns` を組み立てる。
 正方形で 1024×1024 以上、背景は塗りつぶし（透過にしない）。
 
-**角は抜かなくてよい。** 生成した絵は角が黒く塗られた正方形で来るが、`build.sh` が
-丸く抜いてから `.icns` にする。縁に残る 1〜2 画素の黒い帯も、少し広げて描くことで
-枠の外へ追い出している。元の絵には手を入れない。
+**角は自分で丸めない。透過も入れない。** macOS 26 は透過を含まない正方形を受け取ると
+自分で角丸に切り抜く。少しでも透過があると「角丸を描けていない絵」とみなし、薄い板を
+敷いてその上に載せる（Konechi で実測済み）。
+
+生成した絵が角丸を描いて外側を黒く塗ってきた場合も、そのまま置いてよい。`build.sh` が
+背景で埋めて透過の無い正方形に直してから `.icns` にする。元の絵には手を入れない。
+次に作り直すときは、上の指示に「背景は四隅まで塗る。角を丸めない」を足しておくと手数が減る。
 
 ## 確認の仕方
 
