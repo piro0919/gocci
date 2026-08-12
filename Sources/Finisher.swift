@@ -46,10 +46,12 @@ enum Finisher {
             guard let handle = FileHandle(forReadingAtPath: path) else { return }
             defer { try? handle.close() }
 
-            // 欠けている最初の位置を読む。先頭を読んでも、そこが既に手元にあれば
-            // rclone は何も取りに行かない
+            // 欠けている最初の位置から、まとまった量を読む。
+            //
+            // 1 バイトでは rclone は何も取りに行かない（実測した。つついた記録だけが残り、
+            // 1 バイトも増えなかった）。1MB 読ませると取得が始まり、あとは先読みが続ける
             try? handle.seek(toOffset: UInt64(target.gap))
-            _ = try? handle.read(upToCount: 1)
+            _ = try? handle.read(upToCount: 1_000_000)
             logger.info(
                 """
                 途中で止まっていたので続きを取りにいく: \(target.path, privacy: .public) \

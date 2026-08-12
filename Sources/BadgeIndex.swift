@@ -192,7 +192,7 @@ enum BadgeIndex {
             let name = path.precomposedStringWithCanonicalMapping
             found[name] = Paths.percentage(size: size, ranges: ranges)
             gaps[name] = Paths.firstGap(size: size, ranges: ranges)
-            held[name] = ranges.reduce(Int64(0)) { $0 + $1.size }
+            held[name] = Paths.coveredBytes(ranges: ranges)
             sizes[name] = size
 
             // 数が膨らむと書き出しも読み込みも重くなる。実用の範囲で頭を打つ

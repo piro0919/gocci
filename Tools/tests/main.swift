@@ -43,6 +43,12 @@ group("落ちてきた割合") {
     check("大きさ 0 のファイルは手元にあるものとして扱う", Paths.percentage(size: 0, ranges: []), 100)
 }
 
+group("手元にある量") {
+    check("重なっていなければ足すだけ", Paths.coveredBytes(ranges: [(0, 10), (50, 10)]), Int64(20))
+    check("重なりは数えすぎない", Paths.coveredBytes(ranges: [(0, 60), (40, 60)]), Int64(100))
+    check("何も無ければ 0", Paths.coveredBytes(ranges: []), Int64(0))
+}
+
 group("欠けている最初の位置") {
     check("全部あれば無し", Paths.firstGap(size: 100, ranges: [(0, 100)]), Int64?.none)
     check("何も無ければ先頭", Paths.firstGap(size: 100, ranges: []), Optional(Int64(0)))

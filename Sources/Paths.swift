@@ -31,12 +31,8 @@ enum Paths {
         return String(path.dropFirst(mountPoint.count + 1)).precomposedStringWithCanonicalMapping
     }
 
-    /// 落ちてきた割合。rclone の控えにある大きさと、持っている範囲から出す。
-    ///
-    /// 範囲が重なっていても数えすぎないよう、まとめてから足す
-    static func percentage(size: Int64, ranges: [(pos: Int64, size: Int64)]) -> Int {
-        guard size > 0 else { return 100 }
-
+    /// 実際に手元にある量。範囲が重なっていても数えすぎない
+    static func coveredBytes(ranges: [(pos: Int64, size: Int64)]) -> Int64 {
         let spans = ranges.map { ($0.pos, $0.pos + $0.size) }.sorted { $0.0 < $1.0 }
         var merged: [(Int64, Int64)] = []
         for span in spans {
@@ -46,9 +42,15 @@ enum Paths {
                 merged.append(span)
             }
         }
+        return merged.reduce(Int64(0)) { $0 + ($1.1 - $1.0) }
+    }
 
-        let held = merged.reduce(Int64(0)) { $0 + ($1.1 - $1.0) }
-        return Int(min(100, held * 100 / size))
+    /// 落ちてきた割合。rclone の控えにある大きさと、持っている範囲から出す。
+    ///
+    /// 範囲が重なっていても数えすぎないよう、まとめてから足す
+    static func percentage(size: Int64, ranges: [(pos: Int64, size: Int64)]) -> Int {
+        guard size > 0 else { return 100 }
+        return Int(min(100, coveredBytes(ranges: ranges) * 100 / size))
     }
 
     /// 欠けている最初の位置。全部あるなら nil。
