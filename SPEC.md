@@ -53,7 +53,7 @@ CloudMounter は共有アイテムが散らかる。
 | --- | --- | --- | --- |
 | NFS（rclone 内蔵） | なし | 自由 | rclone 側が Experimental |
 | macFUSE | カーネル拡張＋再起動＋許可 | 自由 | 枯れている |
-| File Provider（OS標準） | なし | `~/Library/CloudStorage` 固定の可能性 | 安定 |
+| File Provider（OS標準） | なし | `~/Library/CloudStorage` 固定 | 安定 |
 
 導入の手間がゼロで、かつマウント先を自由に選べるのはこの方式だけ。
 外付けに置けることが今回の出発点なので、ここは譲れない。
@@ -68,6 +68,11 @@ CloudMounter は共有アイテムが散らかる。
 
 macFUSE を採らなかったのは、ここで脱落する人が多すぎるため。
 CloudMounter も Mountain Duck も File Provider に移っているのは、たぶん同じ判断。
+
+File Provider の置き場所が固定なのは確認済み（2026-08-12）。拡張が登録したドメインの実体は
+`~/Library/CloudStorage/<アプリ名>-<ドメイン名>` に OS が自動で作り、パスを指定する API が無い。
+[TidBITS](https://tidbits.com/2023/03/10/apples-file-provider-forces-mac-cloud-storage-changes/)、
+[Apple Developer Forums](https://developer.apple.com/forums/thread/718381)。
 
 ### 実装で裏を取った内容（2026-08-12）
 
@@ -210,8 +215,32 @@ Konechi のような表情で状態を表すキャラは採らない。
 ### 決めていないこと
 
 - 落ちたことを通知で報せるか（今は状態表示だけ）
-- キャッシュの寿命と上限をどう扱うか
 - 設定画面の項目
+
+### Finder に実体の有無を出す（やる方向）
+
+CloudMounter で見えていた「このファイルは手元にあるか」の表示を、Gocci でも出したい。
+
+やり方は **Finder Sync 拡張**（`com.apple.FinderSync`）。CloudMounter も同じ手で、
+`CMFinderSync.appex` を同梱している。外付けの上に自前で NFS マウントを張ったまま
+バッジを出していたので、**マウント先を選べることと両立する**（2026-08-12 に中身を確認）。
+File Provider は要らない。あちらへ移ると置き場所の自由を失う。
+
+判定はキャッシュを見ればできる。rclone は `<キャッシュ先>/vfs/<リモート名>/…` に
+リモートと同じ構成で実体を置くので、そこに在るかどうかがそのまま答えになる。
+
+先に確かめること:
+
+- **アドホック署名の拡張を、システム設定から有効にできるか。** CloudMounter は
+  Developer ID（`XS85JU6YZ3`）で署名されている。ここが通らないと設計が変わる
+- **NFS のマウントの上でバッジが描かれるか**
+
+あわせて決めること:
+
+- **キャッシュの寿命と上限。** 既定は「最終アクセスから1時間、大きさの上限なし」
+  （rclone v1.75.0 で確認）。このままだとバッジは開いた直後だけ付いてすぐ消え、
+  「手元にある」ではなく「さっき開いた」しか意味しない。
+  `--vfs-cache-max-age` を延ばし、`--vfs-cache-max-size` で上限を付ける形になる
 
 ## 手元の状態（2026-08-12 時点）
 
@@ -221,25 +250,30 @@ Konechi のような表情で状態を表すキャラは採らない。
 | 確かめたこと | 結果 |
 | --- | --- |
 | `build.sh` で Gocci.app ができる | 可。rclone v1.75.0 を同梱して 66MB |
-| アプリからマウント | 可。`/Volumes/HIKSEMI/GocciApp` に `localhost:/ … (nfs)` |
+| アプリからマウント | 可。`/Volumes/HIKSEMI/GoogleDrive` に `localhost:/ … (nfs)` |
 | 中身 | 18項目。検証用マウントと同じ |
 | 読み書き | 可。作成・読み出し・削除とも通った |
 | 終了時のアンマウント | 可。rclone も残らない |
 | 起動時の自動マウント | 可。繋がるまで 3〜95 秒（Drive の認証が入るため、幅がある） |
 | 外付けが無いときの待ち | 可。無いディスクを指すと rclone を起動せず待つ |
 | rclone を kill したときの繋ぎ直し | 内蔵では可（11 秒で復帰）。外付けでは抜け殻を外せず失敗する |
+| 置き換え先での常用 | 開始した。`/Volumes/HIKSEMI/GoogleDrive` に本番のマウント |
 
 書いたもの:
 
 | ファイル | 中身 |
 | --- | --- |
-| `build.sh` | rclone を取ってきて同梱し、`swiftc` で組んでアドホック署名まで |
+| `build.sh` | rclone と Sparkle を取ってきて同梱し、`swiftc` で組んでアドホック署名まで |
+| `release.sh` | DMG と ZIP を作り、appcast に署名して GitHub Releases へ |
+| `icon.sh` / `Tools/icon` | メニューバーの印の見本作り、アイコンの角の始末 |
 | `Sources/Mount.swift` | rclone の起動・停止。マウントの有無は statfs で見る |
 | `Sources/main.swift` | メニューバーの常駐とメニュー |
 | `Sources/SettingsWindow.swift` | マウント先・キャッシュ先・リモート名・言語・ログイン時の起動 |
 | `Sources/Settings.swift` | UserDefaults。キャッシュ先の既定はマウント先と同じディスクの直下 |
 | `Sources/Localization.swift` | 日本語と英語。Konechi と同じ表形式 |
-| `Sources/Icon.swift` | SF Symbols での仮のアイコン |
+| `Sources/Mark.swift` | 雲と円盤の図形。メニューバーの印とアプリアイコンで共有する |
+| `Sources/Icon.swift` | 状態ごとの見せ分け（塗り・中抜き・薄い塗り・バッジ） |
+| `Sources/Updater.swift` | Sparkle。起動時に1回だけ確認する |
 
 決めたこと:
 
@@ -298,6 +332,15 @@ Konechi のような表情で状態を表すキャラは採らない。
   落ちた・繋ぎ直した・外せなかったは、後から追えないと直しようがない
 - **マウントが上がるまでの時間は 3 秒から 95 秒までばらついた。** rclone は NFS サーバーを
   上げる前に Drive の認証を通すので、そこの機嫌に引きずられる。待つ上限は 120 秒
+- **上がらなかった rclone は SIGKILL で落とす。** rclone は終わるときに後片付けとして
+  マウント先を外しにいく。まだ何もマウントされていないと、外す相手が「その場所を含む
+  ボリューム」だと解釈され、**外付けごと外れる**。手元で3回起こして、カーネルの記録で
+  裏を取った（`apfs … unmounting volume HIKSEMI, requested by: diskarbitrationd`）。
+  上がっていないなら外すものは無いので、片付けをさせずに落とす
+- **マウント先がリンクなら断る。** `/Volumes/HIKSEMI/GoogleDrive` は CloudMounter が
+  自分のマウント先へ張ったリンクだった。そこへ乗せにいって失敗し、上の事故に繋がった。
+  リンクを見たら、実体のあるフォルダを選ぶよう伝えて止まる
+- **外付けが挿さった通知の直後は3秒待つ。** ボリュームが落ち着く前に始めると失敗しやすい
 - **外付けを待つのは 30 分まで。** 見回りは5秒ごとで、加えて macOS の
   「ディスクが繋がった」通知でも起こす。挿した瞬間に繋がるように。
   待っている間もメニューから手で繋げる。通知は出さない
@@ -313,8 +356,11 @@ Konechi のような表情で状態を表すキャラは採らない。
   自前の client_id への差し替えはまだ
 - **検証用のマウントが生きている。** `/Volumes/HIKSEMI/GocciTest`（手で張ったほう）。
   外すときは `umount /Volumes/HIKSEMI/GocciTest`。キャッシュは `/Volumes/HIKSEMI/.gocci-cache`
-- **アプリの動作確認に使った設定が残っている。** マウント先は `/Volumes/HIKSEMI/GocciApp`。
-  本番の置き換えでは CloudMounter と同じ場所に振り直す
+- **本番のマウント先に振り替えた。** `/Volumes/HIKSEMI/GoogleDrive`。
+  ここには CloudMounter が自分のマウント先へ張ったリンクがあったので消した。
+  戻すなら `ln -s .CloudStorage/Data/CloudMounter-KouheiKawamura /Volumes/HIKSEMI/GoogleDrive`
+- **CloudMounter はまだ消していない。** 戻れる先として残してある。
+  1週間ほど Gocci を常用して、問題が出なければ消す
 - 置き換え対象の CloudMounter は `/Volumes/HIKSEMI/.CloudStorage/CloudMounter-KouheiKawamura` に
   マウントされたまま。並行して動かして見比べてから外す
 
@@ -330,9 +376,10 @@ Konechi のような表情で状態を表すキャラは採らない。
 
 ### 次にやること
 
-1. **アイコン。** 雲＋ディスクの案を形にする。今は SF Symbols の仮
-2. **Sparkle と `release.sh`。** 署名鍵を作るところから。Konechi の `release.sh` を持ってくる
-3. **README と LP。**
+1. **Finder Sync 拡張の試作。** まず「アドホック署名の拡張を有効にできるか」の1点だけ確かめる
+2. **キャッシュの寿命と上限。** バッジを意味のあるものにするために要る
+3. **LP。** `lp/` に Next.js + next-intl で。`gocci.kkweb.io`
+4. **最初のリリース。** 1週間ほど常用して、問題が出なければ v1.0.0 を出す
 
 ## 調べた結果、採らなかったもの
 
