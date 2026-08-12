@@ -21,6 +21,9 @@ enum Finisher {
     /// Finder はサムネイルのために動画の先頭を数 MB 読む。それを「開いた」と扱うと、
     /// フォルダを眺めただけで数 GB 落ちてくる。人が再生したなら、これは軽く超える
     private static let usedThreshold: Int64 = 32_000_000
+    /// 残りがこれ以下なら、読まれた量にかかわらず片付ける。
+    /// 小さい動画は Finder のサムネイルだけで 9 割方読まれる。そこで止めても得が無い
+    private static let leftoverThreshold: Int64 = 32_000_000
 
     /// 一度に読む量
     private static let blockSize = 4_000_000
@@ -49,7 +52,9 @@ enum Finisher {
 
         let mountPoint = (Settings.mountPoint as NSString).standardizingPath
         guard !mountPoint.isEmpty,
-            let target = BadgeIndex.unfinished().first(where: { $0.held >= usedThreshold })
+            let target = BadgeIndex.unfinished().first(where: {
+                $0.held >= usedThreshold || $0.size - $0.held <= leftoverThreshold
+            })
         else { return }
 
         busy = true
