@@ -27,7 +27,7 @@ final class GocciFinderSync: FIFinderSync {
 
         /// この割合はどの段か。切り上げない。9割方まで来ていないのに「9割」とは出さない
         static func of(_ percent: Int) -> Step {
-            Step(percent: max(0, min(100, percent / 10 * 10)))
+            Step(percent: Paths.step(percent))
         }
 
         var identifier: String { "io.kkweb.gocci.step\(percent)" }
@@ -72,20 +72,16 @@ final class GocciFinderSync: FIFinderSync {
     }
 
     private func apply(to url: URL) {
-        let path = (url.path as NSString).standardizingPath
-        guard !mountPoint.isEmpty, path.hasPrefix(mountPoint + "/") else { return }
+        guard let relative = Paths.relative(url.path, mountPoint: mountPoint) else { return }
 
         // フォルダには印を付けない。実体が手元にあるかという話が当てはまらない
         var isDirectory: ObjCBool = false
-        if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
             isDirectory.boolValue
         {
             return
         }
 
-        // 濁点の表し方が場所によって違うことがあるので、比べる前に揃える
-        let relative = String(path.dropFirst(mountPoint.count + 1))
-            .precomposedStringWithCanonicalMapping
         let step = Step.of(progress[relative] ?? 0)
         FIFinderSyncController.default().setBadgeIdentifier(step.identifier, for: url)
     }

@@ -73,7 +73,7 @@ enum BadgeIndex {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: vfs)) ?? []
         return
             names
-            .filter { $0 == remote || $0.hasPrefix("\(remote){") }
+            .filter { Paths.isCacheRoot($0, remote: remote) }
             .map { "\(vfs)/\($0)" }
     }
 
@@ -95,14 +95,14 @@ enum BadgeIndex {
             else { continue }
 
             let size = (meta["Size"] as? NSNumber)?.int64Value ?? 0
-            let ranges = (meta["Rs"] as? [[String: Any]]) ?? []
-            let held = ranges.reduce(into: Int64(0)) { total, range in
-                total += (range["Size"] as? NSNumber)?.int64Value ?? 0
+            let ranges = ((meta["Rs"] as? [[String: Any]]) ?? []).map {
+                (
+                    pos: ($0["Pos"] as? NSNumber)?.int64Value ?? 0,
+                    size: ($0["Size"] as? NSNumber)?.int64Value ?? 0
+                )
             }
-
-            // 大きさが 0 のものは、空のファイルとして手元にあるものと同じ扱いにする
-            let percent = size <= 0 ? 100 : Int(min(100, held * 100 / size))
-            found[path.precomposedStringWithCanonicalMapping] = percent
+            found[path.precomposedStringWithCanonicalMapping] =
+                Paths.percentage(size: size, ranges: ranges)
 
             // 数が膨らむと書き出しも読み込みも重くなる。実用の範囲で頭を打つ
             if found.count >= 20000 { break }

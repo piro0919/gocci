@@ -101,6 +101,7 @@ open Gocci.app
 ## Development
 
 ```bash
+./test.sh       # run the logic tests (touches nothing on disk)
 ./icon.sh       # regenerate the menu bar mark preview at its real size
 ./release.sh 1.0.0   # build, sign the appcast, publish to GitHub Releases
 ```

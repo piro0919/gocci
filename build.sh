@@ -58,7 +58,7 @@ swiftc \
   -framework Sparkle \
   -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
   -o "$APP/Contents/MacOS/Gocci" \
-  Sources/Localization.swift Sources/Settings.swift Sources/Mount.swift \
+  Sources/Paths.swift Sources/Localization.swift Sources/Settings.swift Sources/Mount.swift \
   Sources/RcloneConfig.swift Sources/Evict.swift \
   Sources/Mark.swift Sources/Icon.swift Sources/Updater.swift Sources/BadgeIndex.swift \
   Sources/SettingsWindow.swift Sources/main.swift
@@ -78,7 +78,7 @@ swiftc \
   -framework FinderSync \
   -Xlinker -e -Xlinker _NSExtensionMain \
   -o "$EXT/Contents/MacOS/GocciFinderSync" \
-  Sources/FinderSync/main.swift
+  Sources/Paths.swift Sources/FinderSync/main.swift
 
 cat > "$EXT/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

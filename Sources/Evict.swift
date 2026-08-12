@@ -38,9 +38,8 @@ enum Evict {
         guard !mountPoint.isEmpty else { return }
 
         for path in paths {
-            let full = (path as NSString).standardizingPath
-            guard full.hasPrefix(mountPoint + "/") else { continue }
-            drop(String(full.dropFirst(mountPoint.count + 1)))
+            guard let relative = Paths.relative(path, mountPoint: mountPoint) else { continue }
+            drop(relative)
         }
 
         BadgeIndex.write()
@@ -55,7 +54,7 @@ enum Evict {
             let roots = (try? FileManager.default.contentsOfDirectory(
                 atPath: "\(cacheDir)/\(folder)")) ?? []
 
-            for root in roots where root == remote || root.hasPrefix("\(remote){") {
+            for root in roots where Paths.isCacheRoot(root, remote: remote) {
                 let target = "\(cacheDir)/\(folder)/\(root)/\(relative)"
 
                 // Drive へ送り終えていないものは消さない。消せば書いた内容が失われる
