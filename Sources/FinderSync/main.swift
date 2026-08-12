@@ -113,13 +113,16 @@ final class GocciFinderSync: FIFinderSync {
         let progress = (state["progress"] as? [String: Int]) ?? [:]
         guard mountPoint != self.mountPoint || progress != self.progress else { return }
 
-        if mountPoint != self.mountPoint { known.removeAll() }
-        self.mountPoint = mountPoint
+        // 見張る場所を入れ直すのは、行き先が変わったときだけ。
+        // 一覧が変わるたびに入れ直すと、そのたびに Finder 側の登録がやり直しになり、
+        // 印を訊きに来なくなる（先読みを入れて割合が数秒ごとに動くようになって発覚した）
+        if mountPoint != self.mountPoint {
+            known.removeAll()
+            self.mountPoint = mountPoint
+            FIFinderSyncController.default().directoryURLs =
+                mountPoint.isEmpty ? [] : [URL(fileURLWithPath: mountPoint)]
+        }
         self.progress = progress
-
-        // 見張る場所はマウント先だけ。空のときは何も見張らない
-        FIFinderSyncController.default().directoryURLs =
-            mountPoint.isEmpty ? [] : [URL(fileURLWithPath: mountPoint)]
 
         logger.info(
             "一覧を読み直した: \(progress.count) 件 / 塗り直す \(self.known.count) 件")
