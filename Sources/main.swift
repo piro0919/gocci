@@ -26,6 +26,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let toggleItem = NSMenuItem()
 
 
+    /// 失敗しているときだけ動く点滅
+    private var blinkTimer: Timer?
+    private var blinkOn = true
+
     private var settingsWindow = SettingsWindowController()
     /// 画面を作り直すかの判断に使う。文字列は組み立て時に焼き込まれるため
     private var builtLanguage = Language.resolved
@@ -178,6 +182,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.button?.image = Icon.image(for: state)
         statusItem.button?.toolTip = "Gocci — \(label(for: state))"
 
+        // 通知はアドホック署名では出せない（実測）。人の手が要る失敗は、
+        // メニューバーの印を点滅させて気付かせる
+        updateBlink(for: state)
+
         // 状態は行の右端に出す。左の丸は色で、遠目にも接続の有無が分かるように
         titleItem.attributedTitle = titleText(for: state)
 
@@ -195,6 +203,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             toggleItem.title = state == .mounting ? L.mounting : L.unmounting
             toggleItem.isEnabled = false
         }
+    }
+
+    /// 失敗しているときだけ動く点滅。
+    ///
+    /// 通知はアドホック署名では出せない（`Notifications are not allowed for this application`）。
+    /// 人の手が要る失敗に気付ける手立てが、印の色だけでは弱い
+    private func updateBlink(for state: MountState) {
+        let failed: Bool
+        if case .failed = state { failed = true } else { failed = false }
+
+        guard failed else {
+            blinkTimer?.invalidate()
+            blinkTimer = nil
+            statusItem.button?.alphaValue = 1
+            return
+        }
+        guard blinkTimer == nil else { return }
+
+        let timer = Timer(timeInterval: 0.8, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.blinkOn.toggle()
+            self.statusItem.button?.alphaValue = self.blinkOn ? 1 : 0.35
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        blinkTimer = timer
     }
 
     private func titleText(for state: MountState) -> NSAttributedString {

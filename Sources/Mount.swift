@@ -46,6 +46,7 @@ final class MountController {
     private(set) var state: MountState = .unmounted {
         didSet {
             guard state != oldValue else { return }
+
             logger.info(
                 """
                 状態: \(String(describing: oldValue), privacy: .public) \
