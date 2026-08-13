@@ -183,7 +183,9 @@ enum DSStore {
         head.append(be32(UInt32(infoOffset)))
         out.replaceSubrange(0..<head.count, with: head)
 
-        try out.write(to: URL(fileURLWithPath: path))
+        // 途中で止められても、書きかけのものを残さない。壊れた `.DS_Store` は
+        // こちらが二度と触らなくなる（読めないものには手を出さない作りのため）
+        try out.write(to: URL(fileURLWithPath: path), options: .atomic)
     }
 
     // MARK: - 部品
