@@ -47,9 +47,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             forName: .mountStateChanged, object: nil, queue: .main
         ) { [weak self] _ in
             self?.refresh()
-            if MountController.shared.state == .mounted {
-                FinderView.sweep(Settings.mountPoint)
-            }
         }
 
         NotificationCenter.default.addObserver(
@@ -68,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
             // 設定を入れた瞬間に、マウント先の下を一通り歩く。「入れたのに何も起きない」を避ける
             if MountController.shared.state == .mounted {
-                FinderView.sweep(Settings.mountPoint, force: true)
+                FinderView.sweep(Settings.mountPoint)
             }
         }
 

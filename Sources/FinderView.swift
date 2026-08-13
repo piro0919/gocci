@@ -20,19 +20,18 @@ enum FinderView {
     private static let viewRecords = ["icvp", "lsvp"]
 
     private static let queue = DispatchQueue(label: "io.kkweb.gocci.finderview")
-    private static var sweptAt = Date.distantPast
-    /// 全部を歩くので、マウントし直すたびに走らせない。設定を入れ直したときだけ間を空けずに走る。
-    /// 歩き切るのに何十分もかかる（実測: 大きめの Drive で30分以上）ので、間隔は広く取る
-    private static let interval: TimeInterval = 6 * 60 * 60
 
-    /// 設定が入っていれば、マウント先の下を歩く。走るのは一度に一つだけ
-    static func sweep(_ mountPoint: String, force: Bool = false) {
+    /// 設定を入れたときに、マウント先の下を一通り歩く。
+    ///
+    /// 走らせるのはこのときだけにしてある。一覧を取るのがひたすら遅く、大きめの Drive では
+    /// 何時間もかかる（実測: 28分で上位2フォルダぶん。CPU 時間は 0.01 秒で、残りは待ち時間）。
+    /// 定期的に歩き直す作りにすると、ほぼ常時 Drive を舐め続けることになる。
+    /// 後から増えたフォルダは、そこを開いたときに `coverBrowsedDirectory` が拾う
+    static func sweep(_ mountPoint: String) {
         guard Settings.keepsFinderSettings, !mountPoint.isEmpty else { return }
 
         queue.async {
-            guard force || Date().timeIntervalSince(sweptAt) > interval else { return }
             guard FileManager.default.fileExists(atPath: mountPoint) else { return }
-            sweptAt = Date()
             hideIconPreviews(under: mountPoint)
         }
     }
@@ -47,6 +46,9 @@ enum FinderView {
     }
 
     private static var lastBrowsed = ""
+    private static var lastCoveredAt = Date.distantPast
+    /// 同じフォルダを見続けている間に見直す間隔。ここで新しく作られたフォルダを拾う
+    private static let recheckInterval: TimeInterval = 10
     private static var watchTimer: DispatchSourceTimer?
 
     /// 拡張からの報せを拾い続ける。主スレッドの時計はメニューを開いている間止まるので使わない
@@ -60,15 +62,21 @@ enum FinderView {
         watchTimer = timer
     }
 
-    /// 見ているフォルダの一段先を覆う。歩き直しは何十分もかかるので、その隙間を埋める役
+    /// 見ているフォルダの一段先を覆う。歩き直しは何十分もかかるので、その隙間を埋める役。
+    ///
+    /// 移った直後だけでなく、同じ場所に留まっている間も見直す。フォルダは見ている最中に
+    /// 増える——自分で作ることもあれば、Drive の側で増えることもある。
+    /// 記録の無いフォルダを Finder が先に開くと、既定のまま「プレビュー有効」で保存される
     static func coverBrowsedDirectory() {
         guard Settings.keepsFinderSettings,
             let data = try? Data(contentsOf: browsingURL),
-            case let path = String(decoding: data, as: UTF8.self), !path.isEmpty,
-            path != lastBrowsed
+            case let path = String(decoding: data, as: UTF8.self), !path.isEmpty
         else { return }
 
+        let moved = path != lastBrowsed
+        guard moved || Date().timeIntervalSince(lastCoveredAt) > recheckInterval else { return }
         lastBrowsed = path
+        lastCoveredAt = Date()
         let mountPoint = (Settings.mountPoint as NSString).standardizingPath
         guard !mountPoint.isEmpty, path == mountPoint || path.hasPrefix(mountPoint + "/") else {
             return
