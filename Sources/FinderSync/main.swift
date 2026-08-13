@@ -225,20 +225,46 @@ final class GocciFinderSync: FIFinderSync {
         return image
     }
 
-    /// 記号を枠いっぱいに描く。記号ごとに縦横の比が違うので、大きい辺を枠に合わせる
+    /// 記号を枠いっぱいに描く。
+    ///
+    /// SF Symbols の絵は外周に1割ほどの余白を持っている（実測: cloud.fill は 87x63 の枠に
+    /// 中身 78x52）。そのまま貼ると、その余白のぶんだけ小さく見える。
+    /// 中身の範囲を測って、そこを枠に合わせる
     private static func draw(symbol: String, color: NSColor, in side: CGFloat) {
         guard
             let mark = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-                .withSymbolConfiguration(.init(pointSize: side, weight: .semibold))
+                .withSymbolConfiguration(.init(pointSize: side * 2, weight: .bold)),
+            let tiff = mark.tiffRepresentation,
+            let rep = NSBitmapImageRep(data: tiff)
         else { return }
 
-        let scale = side / max(mark.size.width, mark.size.height)
-        let width = mark.size.width * scale
-        let height = mark.size.height * scale
+        // 色が乗っている範囲を測る
+        var minX = rep.pixelsWide, maxX = 0, minY = rep.pixelsHigh, maxY = 0
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.05 {
+                minX = min(minX, x)
+                maxX = max(maxX, x)
+                minY = min(minY, y)
+                maxY = max(maxY, y)
+            }
+        }
+        guard maxX > minX, maxY > minY else { return }
+
+        let inkWidth = CGFloat(maxX - minX + 1)
+        let inkHeight = CGFloat(maxY - minY + 1)
+        let scale = side / max(inkWidth, inkHeight)
+
+        let width = inkWidth * scale
+        let height = inkHeight * scale
         let rect = NSRect(
             x: (side - width) / 2, y: (side - height) / 2, width: width, height: height)
 
-        mark.draw(in: rect)
+        // 中身の範囲だけを切り出して、枠へ引き伸ばす
+        let source = NSRect(
+            x: CGFloat(minX), y: CGFloat(rep.pixelsHigh - maxY - 1),
+            width: inkWidth, height: inkHeight)
+        mark.draw(in: rect, from: source, operation: .sourceOver, fraction: 1)
+
         color.set()
         rect.fill(using: .sourceAtop)
     }
