@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import ServiceManagement
 
@@ -68,7 +69,11 @@ enum Settings {
 
     // MARK: - キャッシュ先
 
-    /// 利用者が指定した値。空のときは resolvedCacheDir が決める
+    /// 利用者が指定した値。空のときは resolvedCacheDir が決める。
+    ///
+    /// 設定画面には出さない。既定（マウント先と同じディスク）でほぼ正解になり、
+    /// 変える理由は例外的（外付けが exFAT で穴あきファイルを作れない、外付けが遅い、など）。
+    /// 必要な人は `defaults write io.kkweb.gocci cacheDir <パス>` で変えられる
     static var cacheDir: String {
         get { UserDefaults.standard.string(forKey: cacheDirKey) ?? "" }
         set {
@@ -85,12 +90,30 @@ enum Settings {
     static var resolvedCacheDir: String {
         if !cacheDir.isEmpty { return cacheDir }
 
-        if let volume = volumeRoot(of: Paths.cacheParent(of: mountPoint)) {
+        if let volume = volumeRoot(of: Paths.cacheParent(of: mountPoint)),
+            supportsSparseFiles(volume)
+        {
             return (volume as NSString).appendingPathComponent(".gocci-cache")
         }
 
         let fallback = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
         return fallback?.appendingPathComponent("io.kkweb.gocci").path ?? NSTemporaryDirectory()
+    }
+
+    /// 穴あきファイルを作れるか。
+    ///
+    /// rclone は読んだところだけを持つ穴あきファイルでキャッシュを作る。FAT や exFAT は
+    /// これを作れず、rclone 自身が「極端に遅くなる」と警告する。作れない場所は避ける
+    private static func supportsSparseFiles(_ volume: String) -> Bool {
+        var info = statfs()
+        guard statfs(volume, &info) == 0 else { return true }
+
+        let type = withUnsafePointer(to: info.f_fstypename) { pointer in
+            pointer.withMemoryRebound(
+                to: CChar.self, capacity: MemoryLayout.size(ofValue: info.f_fstypename)
+            ) { String(cString: $0) }
+        }
+        return !["exfat", "msdos", "fat32", "ntfs"].contains(type.lowercased())
     }
 
     /// マウント先を置く場所が今あるか。外付けが繋がっていなければ `/Volumes/HIKSEMI` ごと無い。

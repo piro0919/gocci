@@ -7,7 +7,6 @@ import AppKit
 
 final class SettingsWindowController: NSWindowController {
     private let mountPointField = NSTextField(string: "")
-    private let cacheDirField = NSTextField(string: "")
     private let remotePopUp = NSPopUpButton()
     private let periodPopUp = NSPopUpButton()
     private let limitPopUp = NSPopUpButton()
@@ -44,12 +43,11 @@ final class SettingsWindowController: NSWindowController {
 
         window.delegate = self
 
-        for field in [mountPointField, cacheDirField] {
+        for field in [mountPointField] {
             field.target = self
             field.action = #selector(commitFields)
         }
         mountPointField.placeholderString = "/Volumes/…"
-        cacheDirField.placeholderString = L.cacheDefaultHint
         remotePopUp.target = self
         remotePopUp.action = #selector(changeRemote)
 
@@ -87,10 +85,6 @@ final class SettingsWindowController: NSWindowController {
             title: L.choose, target: self, action: #selector(chooseMountPoint))
         chooseMountPoint.bezelStyle = .rounded
 
-        let chooseCacheDir = NSButton(
-            title: L.choose, target: self, action: #selector(chooseCacheDir))
-        chooseCacheDir.bezelStyle = .rounded
-
         let updateButton = NSButton(
             title: L.checkForUpdates, target: self, action: #selector(checkForUpdates))
         updateButton.bezelStyle = .rounded
@@ -112,7 +106,6 @@ final class SettingsWindowController: NSWindowController {
 
         let stack = NSStackView(views: [
             row(L.mountPoint, mountPointField, chooseMountPoint),
-            row(L.cacheDir, cacheDirField, chooseCacheDir),
             row(L.remote, remotePopUp),
             divider(),
             row(L.clientID, clientIDField),
@@ -184,7 +177,6 @@ final class SettingsWindowController: NSWindowController {
     func show() {
         // 開くたびに読み直す。設定画面の外（システム設定）で変えられることがあるため
         mountPointField.stringValue = Settings.mountPoint
-        cacheDirField.stringValue = Settings.cacheDir
         let remotes = RcloneConfig.driveRemotes()
         remotePopUp.removeAllItems()
         remotePopUp.addItems(withTitles: remotes.isEmpty ? [Settings.remote] : remotes)
@@ -221,21 +213,12 @@ final class SettingsWindowController: NSWindowController {
         if mountPointField.stringValue != Settings.mountPoint {
             Settings.mountPoint = mountPointField.stringValue
         }
-        if cacheDirField.stringValue != Settings.cacheDir {
-            Settings.cacheDir = cacheDirField.stringValue
-        }
 
     }
 
     @objc private func chooseMountPoint() {
         guard let path = pickDirectory() else { return }
         mountPointField.stringValue = path
-        commitFields()
-    }
-
-    @objc private func chooseCacheDir() {
-        guard let path = pickDirectory() else { return }
-        cacheDirField.stringValue = path
         commitFields()
     }
 
