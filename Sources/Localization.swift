@@ -90,9 +90,6 @@ enum L {
     /// Google Cloud Console の表示と揃える。貼り付ける人が迷わないように
     static var clientID: String { t("クライアントID", "Client ID") }
     static var clientSecret: String { t("クライアントシークレット", "Client secret") }
-    static var credentialsHint: String {
-        t("入れないと2026年中に使えなくなります", "Without your own, this stops working during 2026")
-    }
     static var howToGetCredentials: String { t("取得の手順", "How to Get One") }
     static var openCloudConsole: String { t("Google Cloud Console", "Google Cloud Console") }
     static var reconnect: String { t("保存して認証し直す", "Save and Re-authenticate") }

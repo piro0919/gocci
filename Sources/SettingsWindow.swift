@@ -115,7 +115,6 @@ final class SettingsWindowController: NSWindowController {
             divider(),
             row(L.clientID, clientIDField),
             row(L.clientSecret, clientSecretField),
-            hint(L.credentialsHint),
             links(),
             divider(),
             row(L.cacheMaxAge, periodPopUp),
