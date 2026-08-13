@@ -87,12 +87,11 @@ enum L {
         t("再生を止めてもダウンロードを続ける", "Keep Downloading After You Stop Playing")
     }
     static var fetchWholeHint: String { "" }
-    static var clientID: String { "client_id" }
-    static var clientSecret: String { "client_secret" }
+    /// Google Cloud Console の表示と揃える。貼り付ける人が迷わないように
+    static var clientID: String { t("クライアントID", "Client ID") }
+    static var clientSecret: String { t("クライアントシークレット", "Client secret") }
     static var credentialsHint: String {
-        t(
-            "Googleが発行する認証情報です。入れないと2026年中に使えなくなります",
-            "Google issues these. Without your own, this stops working during 2026")
+        t("入れないと2026年中に使えなくなります", "Without your own, this stops working during 2026")
     }
     static var howToGetCredentials: String { t("取得の手順", "How to Get One") }
     static var openCloudConsole: String { t("Google Cloud Console", "Google Cloud Console") }

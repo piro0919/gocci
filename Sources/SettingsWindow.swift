@@ -157,8 +157,9 @@ final class SettingsWindowController: NSWindowController {
         window.setContentSize(NSSize(width: 460, height: content.fittingSize.height))
     }
 
-    /// 見出しの幅。入力欄の左端を一列に揃えるための基準
-    private static let labelWidth: CGFloat = 130
+    /// 見出しの幅。入力欄の左端を一列に揃えるための基準。
+    /// 一番長い見出し（クライアントシークレット）が収まる幅にする
+    private static let labelWidth: CGFloat = 170
 
     private func row(_ title: String, _ controls: NSView...) -> NSView {
         let label = NSTextField(labelWithString: title)
