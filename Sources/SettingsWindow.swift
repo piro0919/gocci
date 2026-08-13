@@ -104,9 +104,14 @@ final class SettingsWindowController: NSWindowController {
         about.textColor = .secondaryLabelColor
         about.font = .systemFont(ofSize: 11)
 
-        let stack = NSStackView(views: [
-            row(L.mountPoint, mountPointField, chooseMountPoint),
-            row(L.remote, remotePopUp),
+        let remotes = RcloneConfig.driveRemotes()
+        // 接続先が1つなら、行そのものを置かない。隠すだけだと余白が残る
+        if remotes.count == 1, remotes[0] != Settings.remote { Settings.remote = remotes[0] }
+
+        var rows: [NSView] = [row(L.mountPoint, mountPointField, chooseMountPoint)]
+        if remotes.count > 1 { rows.append(row(L.remote, remotePopUp)) }
+
+        let stack = NSStackView(views: rows + [
             divider(),
             row(L.clientID, clientIDField),
             row(L.clientSecret, clientSecretField),
@@ -177,9 +182,9 @@ final class SettingsWindowController: NSWindowController {
     func show() {
         // 開くたびに読み直す。設定画面の外（システム設定）で変えられることがあるため
         mountPointField.stringValue = Settings.mountPoint
-        let remotes = RcloneConfig.driveRemotes()
+        let available = RcloneConfig.driveRemotes()
         remotePopUp.removeAllItems()
-        remotePopUp.addItems(withTitles: remotes.isEmpty ? [Settings.remote] : remotes)
+        remotePopUp.addItems(withTitles: available.isEmpty ? [Settings.remote] : available)
         remotePopUp.selectItem(withTitle: Settings.remote)
         if remotePopUp.indexOfSelectedItem < 0 { remotePopUp.selectItem(at: 0) }
 
