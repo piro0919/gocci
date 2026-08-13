@@ -14,8 +14,6 @@ final class SettingsWindowController: NSWindowController {
     private let clientSecretField = NSSecureTextField(string: "")
     private let launchCheckbox = NSButton(
         checkboxWithTitle: L.launchAtLogin, target: nil, action: nil)
-    private let fetchWholeCheckbox = NSButton(
-        checkboxWithTitle: L.fetchWhole, target: nil, action: nil)
     private let finderSettingsCheckbox = NSButton(
         checkboxWithTitle: L.keepFinderSettings, target: nil, action: nil)
     private let languagePopUp = NSPopUpButton()
@@ -63,8 +61,6 @@ final class SettingsWindowController: NSWindowController {
         launchCheckbox.target = self
         launchCheckbox.action = #selector(toggleLaunch)
 
-        fetchWholeCheckbox.target = self
-        fetchWholeCheckbox.action = #selector(toggleFetchWhole)
 
         finderSettingsCheckbox.target = self
         finderSettingsCheckbox.action = #selector(toggleFinderSettings)
@@ -119,7 +115,6 @@ final class SettingsWindowController: NSWindowController {
             divider(),
             row(L.cacheMaxAge, periodPopUp),
             row(L.cacheMaxSize, limitPopUp),
-            checkboxRow(fetchWholeCheckbox),
             checkboxRow(finderSettingsCheckbox),
             hint(L.keepFinderSettingsHint),
             divider(),
@@ -195,7 +190,6 @@ final class SettingsWindowController: NSWindowController {
         clientIDField.stringValue = credentials["client_id"] ?? ""
         clientSecretField.stringValue = credentials["client_secret"] ?? ""
         launchCheckbox.state = Settings.launchesAtLogin ? .on : .off
-        fetchWholeCheckbox.state = Settings.fetchesWholeFile ? .on : .off
         finderSettingsCheckbox.state = Settings.keepsFinderSettings ? .on : .off
         report("")
         hasShown = true
@@ -268,10 +262,6 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func toggleFinderSettings() {
         Settings.keepsFinderSettings = finderSettingsCheckbox.state == .on
-    }
-
-    @objc private func toggleFetchWhole() {
-        Settings.fetchesWholeFile = fetchWholeCheckbox.state == .on
     }
 
     /// client_id を取りに行くための入口と、書き込みの実行

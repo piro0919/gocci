@@ -196,9 +196,13 @@ enum Settings {
     /// サムネイルのために覗いただけの動画まで丸ごと落ちてくる。「開いた」の範囲が
     /// 人の意図と合わない。
     ///
-    /// 代わりにアプリが、ある程度読まれたファイルの続きを取りにいく
+    /// 代わりにアプリが、ある程度読まれたファイルの続きを取りにいく。
+    ///
+    /// 設定画面には出さない。開いたものが手元に残るのが普通の期待で、切って嬉しいのは
+    /// 通信量を切り詰めたいときだけ。キャッシュには期限と上限がかかっているので、
+    /// 際限なく溜まることもない。切りたい人は `defaults write io.kkweb.gocci fetchWholeFile -bool NO`
     static var fetchesWholeFile: Bool {
-        get { UserDefaults.standard.bool(forKey: fetchWholeKey) }
+        get { (UserDefaults.standard.object(forKey: fetchWholeKey) as? Bool) ?? true }
         set {
             UserDefaults.standard.set(newValue, forKey: fetchWholeKey)
             NotificationCenter.default.post(name: .settingsChanged, object: nil)
@@ -213,9 +217,12 @@ enum Settings {
     /// アイコンプレビューを切っても開き直すたびに戻る。保存を許すと設定が残り、
     /// プレビューを切ったフォルダでは中身が読まれなくなる＝落ちてこない。
     ///
-    /// 代償は Drive 側に `.DS_Store` が増えること。既定では入れない
+    /// 代償は Drive 側に `.DS_Store` が増えること。既定では入れる。
+    ///
+    /// 切り替えは残してある。これは利用者の Drive にこちらがファイルを書く設定で、
+    /// 共有フォルダなら相手にも見える。断る手立てごと無くすのは避ける
     static var keepsFinderSettings: Bool {
-        get { UserDefaults.standard.bool(forKey: finderSettingsKey) }
+        get { (UserDefaults.standard.object(forKey: finderSettingsKey) as? Bool) ?? true }
         set {
             UserDefaults.standard.set(newValue, forKey: finderSettingsKey)
             NotificationCenter.default.post(name: .settingsChanged, object: nil)

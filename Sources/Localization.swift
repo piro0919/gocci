@@ -83,10 +83,6 @@ enum L {
     static var cacheMaxSize: String { t("上限", "Limit") }
     static var cacheLimitsHint: String { "" }
     static var launchAtLogin: String { t("ログイン時に起動する", "Launch at Login") }
-    static var fetchWhole: String {
-        t("再生を止めてもダウンロードを続ける", "Keep Downloading After You Stop Playing")
-    }
-    static var fetchWholeHint: String { "" }
     /// Google Cloud Console の表示と揃える。貼り付ける人が迷わないように
     static var clientID: String { t("クライアントID", "Client ID") }
     static var clientSecret: String { t("クライアントシークレット", "Client secret") }
