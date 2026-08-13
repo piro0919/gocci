@@ -108,8 +108,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // マウント先が決まっていなければ、まず設定を出す。初回はここに来る
         if Settings.mountPoint.isEmpty || CommandLine.arguments.contains("--settings") {
             openSettings()
-            return
         }
+
+        // 行き先が決まっていれば繋ぐ。設定を開いていても、繋がない理由にはならない。
+        // ここを飛ばしていたせいで、`--settings` 付きで起動すると繋がらなかった
+        guard !Settings.mountPoint.isEmpty else { return }
 
         // 普段はメニューを触らずに繋がる。外付けがまだなら、繋がるまで待つ
         mount.mountWhenReady()
