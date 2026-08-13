@@ -66,6 +66,22 @@ final class GocciFinderSync: FIFinderSync {
         }
     }
 
+    /// 開いたフォルダをアプリへ伝える。
+    ///
+    /// アプリはその中のフォルダに、先回りして「プレビューを出さない」設定を書く。
+    /// 新しく作られたフォルダや名前を変えたフォルダは記録を持たず、開くと中身が落ちてくる。
+    /// マウント先を全部歩き直すには何十分もかかるので、見ている場所の一段先だけを覆う。
+    /// NFS のマウントでは FSEvents が飛ばないため、変化を見張る道は使えない（2026-08-14 実測）
+    override func beginObservingDirectory(at url: URL) {
+        guard
+            let support = FileManager.default.urls(
+                for: .applicationSupportDirectory, in: .userDomainMask
+            ).first
+        else { return }
+        try? Data(url.path.utf8).write(
+            to: support.appendingPathComponent("browsing.txt"), options: .atomic)
+    }
+
     override func requestBadgeIdentifier(for url: URL) {
         known.insert(url)
         apply(to: url)

@@ -105,6 +105,46 @@ group("マウント先から見た道") {
         Optional("が.txt"))
 }
 
+// MARK: - .DS_Store の読み書き
+
+// 形式は公開されていない。往復できるかを見る。ここを間違えると、利用者が Finder で
+// 積み上げた表示設定を書き潰す。実際に、長さの前置きを二重に数えて壊したことがある
+
+group(".DS_Store") {
+    let directory = NSTemporaryDirectory() + "gocci-dsstore-\(getpid())"
+    try? FileManager.default.createDirectory(
+        atPath: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(atPath: directory) }
+    let path = directory + "/.DS_Store"
+
+    let plist = try! PropertyListSerialization.data(
+        fromPropertyList: ["showIconPreview": false, "viewOptionsVersion": 1],
+        format: .binary, options: 0)
+    let written = [
+        DSStoreRecord(name: "Movies", id: "icvp", type: "blob", payload: plist),
+        DSStoreRecord(name: "が.txt", id: "vSrn", type: "long", payload: Data([0, 0, 0, 1])),
+        DSStoreRecord(name: "Comics", id: "lsvp", type: "blob", payload: plist),
+    ]
+    try! DSStore.write(written, to: path)
+    let read = (try? DSStore.read(path)) ?? []
+
+    check("記録の数が変わらない", read.count, written.count)
+    check("名前の順に並ぶ", read.map(\.name), ["Comics", "Movies", "が.txt"])
+    check("blob の中身が保たれる", read.first { $0.id == "icvp" }?.payload, Optional(plist))
+    check("long の中身が保たれる", read.first { $0.id == "vSrn" }?.payload, Optional(Data([0, 0, 0, 1])))
+
+    // 一つのページに収まらない量。段を作らずに大きなページで書けているか
+    let many = (0..<400).map {
+        DSStoreRecord(name: "folder\($0)", id: "icvp", type: "blob", payload: plist)
+    }
+    try! DSStore.write(many, to: path)
+    check("400 フォルダぶんも往復する", (try? DSStore.read(path))?.count, Optional(400))
+
+    // 壊れたものを読んだら投げる。黙って空を返すと、書き直して中身を失う
+    try! Data(repeating: 0, count: 4096).write(to: URL(fileURLWithPath: path))
+    check("壊れたファイルは読まない", (try? DSStore.read(path)) == nil, true)
+}
+
 print("")
 if failures == 0 {
     print("全部通りました")

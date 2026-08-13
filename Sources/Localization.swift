@@ -98,12 +98,12 @@ enum L {
     }
     static var reconnected: String { t("認証し直しました", "Re-authenticated") }
     static var keepFinderSettings: String {
-        t("フォルダの表示設定を覚える", "Remember Folder View Settings")
+        t("フォルダを開いてもダウンロードしない", "Don't Download When You Open a Folder")
     }
     static var keepFinderSettingsHint: String {
         t(
-            "アイコンプレビューを切ったフォルダは、開いてもダウンロードされません",
-            "Folders with icon previews off download nothing when you open them")
+            "すべてのフォルダでアイコンプレビューを切ります。表示設定は Google ドライブに保存されます",
+            "Turns off icon previews in every folder. View settings are saved to Google Drive")
     }
     static var language: String { t("言語", "Language") }
     static var checkForUpdates: String { t("更新を確認", "Check for Updates") }

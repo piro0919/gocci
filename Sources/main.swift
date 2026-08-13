@@ -47,6 +47,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             forName: .mountStateChanged, object: nil, queue: .main
         ) { [weak self] _ in
             self?.refresh()
+            if MountController.shared.state == .mounted {
+                FinderView.sweep(Settings.mountPoint)
+            }
         }
 
         NotificationCenter.default.addObserver(
@@ -62,6 +65,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             self.buildMenu()
             self.refresh()
+
+            // 設定を入れた瞬間に、マウント先の下を一通り歩く。「入れたのに何も起きない」を避ける
+            if MountController.shared.state == .mounted {
+                FinderView.sweep(Settings.mountPoint, force: true)
+            }
         }
 
         // 外付けを抜かれた、別のアプリに外された、といった変化はこちらに通知が来ない
@@ -81,6 +89,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // Finder の右クリックから「手元から削除」を頼まれる。拡張は自分では消せない
         Evict.start()
+
+        // 拡張が報せてくる「開いたフォルダ」を拾い、その一段先を覆う
+        FinderView.startWatching()
 
         // 中断で途中のまま残ったファイルを、最後まで取りにいく
         Finisher.start()

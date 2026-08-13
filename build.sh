@@ -61,6 +61,7 @@ swiftc \
   Sources/Paths.swift Sources/Localization.swift Sources/Settings.swift Sources/Mount.swift \
   Sources/RcloneConfig.swift Sources/Evict.swift Sources/Finisher.swift \
   Sources/Mark.swift Sources/Icon.swift Sources/Updater.swift Sources/BadgeIndex.swift \
+  Sources/DSStore.swift Sources/FinderView.swift \
   Sources/SettingsWindow.swift Sources/main.swift
 
 # Finder に実体の有無を出す拡張。アプリの中に PlugIns として入れる。

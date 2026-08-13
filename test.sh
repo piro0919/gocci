@@ -5,5 +5,5 @@ set -euo pipefail
 cd "$(dirname "$0")"
 mkdir -p build
 
-swiftc -O -target arm64-apple-macos14.0 -o build/tests Sources/Paths.swift Tools/tests/main.swift
+swiftc -O -target arm64-apple-macos14.0 -o build/tests Sources/Paths.swift Sources/DSStore.swift Tools/tests/main.swift
 ./build/tests
