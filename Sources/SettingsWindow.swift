@@ -149,6 +149,11 @@ final class SettingsWindowController: NSWindowController {
             stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -margin),
             stack.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -margin),
         ])
+        // 区切り線は、積み上げた中身と同じ幅にする。固定値だと中身とずれる
+        for line in dividers {
+            line.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        }
+
         window.contentView = content
         content.layoutSubtreeIfNeeded()
         window.setContentSize(NSSize(width: 460, height: content.fittingSize.height))
@@ -346,12 +351,14 @@ final class SettingsWindowController: NSWindowController {
         }
     }
 
-    /// 区切り線。性質の違うものを分ける
+    /// 区切り線。性質の違うものを分ける。幅は中身に合わせるので、組み上げた後に決める
+    private var dividers: [NSView] = []
+
     private func divider() -> NSView {
         let line = NSBox()
         line.boxType = .separator
         line.translatesAutoresizingMaskIntoConstraints = false
-        line.widthAnchor.constraint(equalToConstant: 412).isActive = true
+        dividers.append(line)
         return line
     }
 
