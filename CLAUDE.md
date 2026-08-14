@@ -1,52 +1,67 @@
-# CLAUDE.md（gocci）
+# CLAUDE.md (gocci)
 
-このリポジトリで作業するときの決まり。2026-08-13 のやり取りで実際に起きた失敗から作った。
+How to work in this repository. Written from what actually went wrong on 2026-08-13.
 
-## 断定する前に測る
+## Measure before asserting
 
-**挙動についての断定は、同じ返答の中に測定結果を貼ってから書く。** 貼れないなら
-「未確認」と明記する。推測と実測を同じ文に混ぜない。
+**A claim about behaviour ships with the measurement in the same reply.** If the measurement
+cannot be shown, say 未確認 instead. Never mix a guess and a reading in one sentence.
 
-外した例（すべて同日）:
+Claims that turned out wrong, all on the same day:
 
-- 「メニューの項目は開いている間に描き直されない」→ 実際は値が更新されていなかっただけ
-- 「進捗が動かないのは表示の問題」→ 実際は rclone が同じ場所に5つ動いていた
-- 「File Provider は置き場所が固定」→ 記事の記述を鵜呑みにした。実機の CloudMounter が反例
-- 「フォルダごとの表示設定は保存できない」→ `--noappledouble` を切れば保存できた
+- "Menu items are not redrawn while the menu is open" — the value simply was not being updated
+- "The progress not moving is a display problem" — five copies of rclone were running on the
+  same directory
+- "File Provider fixes where the data lives" — taken from an article. The CloudMounter install
+  on this machine was a counterexample
+- "Per-folder view settings cannot be persisted" — they can, once `--noappledouble` is dropped
 
-## 「できない」と書かない
+## Do not write "impossible"
 
-書いてよいのは「**まだ見つけていない**」「**まだ確かめていない**」まで。
-不可能だと書く前に、最低限これを済ませる。
+The most that may be written is **not found yet** or **not verified yet**. Before calling
+something impossible, at minimum:
 
-- その道具の `--help` を**最後まで**読む（`grep` で当たりを付けて終わりにしない）
-- API なら一覧を見る。記事ではなく実機と公式の記述を採る
-- 目の前で反例が動いていないか確かめる
+- Read the tool's `--help` **to the end**. Do not stop at the first `grep` hit
+- For an API, read the whole listing. Prefer the machine and the official text over articles
+- Check whether a counterexample is running right in front of you
 
-`--noappledouble` は最初から `--help` に載っていた。読まずに「できない」と何度も答えた。
+`--noappledouble` was in `--help` from the start. It went unread while the answer "cannot be
+done" was repeated.
 
-## 記事より実機
+## The machine beats the article
 
-Web の記述と手元の挙動が食い違ったら、**手元を採る**。記事は既定の説明でしかないことがある。
+When the web text and the local behaviour disagree, **take the local behaviour**. An article is
+often only describing the default.
 
-## 指摘されたら、その話を終わらせる
+## When corrected, finish that conversation
 
-- 指摘への返答で、次の作業提案をしない。作業へ戻すのは相手
-- 納得していないと言われている間は、実装の話に切り替えない
-- 返答の末尾で判断を迫らない（「入れますか」「どちらにしますか」で締めない）
-- 「今日はここまでにしますか」の類は書かない
+- Do not attach a proposal for the next task to a reply about a correction. Returning to work
+  is the other person's call
+- While they are saying they are not convinced, do not switch the subject to implementation
+- Do not end a reply by forcing a decision. No "shall I add it?", no "which would you prefer?"
+- Never write "shall we stop here for today?"
 
-## 確認を頼む前に、自分で取れるものは自分で取る
+## Gather what you can before asking
 
-頼む回数がそのまま相手の手間になる。先にこれらを使う。
+Every request costs the other person a turn. Reach for these first.
 
 - `log show --predicate 'subsystem == "io.kkweb.gocci"' --last 10m --info`
-- 画面の読み取り（`screencapture -l <窓ID>`、`Tools` の窓一覧、System Events でメニューの中身を読む）
-- `./test.sh` と `./test-live.sh`
+- Reading the screen: `screencapture -l <window id>`, the window list under `Tools`, and System
+  Events for the contents of a menu
+- `./test.sh` and `./test-live.sh`
 
-同じ確認を相手に4回させたことがある。2回目からは自分で読み取る手段を探す。
+The same check was handed to the other person four times. From the second time on, find a way
+to read it directly.
 
-## アプリを入れ替えたら Finder も再起動する
+## Language
 
-拡張が入れ替わると Finder が印を訊きに来なくなる。入れ替えたら続けて `killall Finder`
-まで済ませる。黙って直すのではなく、再起動することを先に伝える。
+Commit messages, PR titles and bodies, the README, docs, and release notes are written in
+English. This file is part of that. It has been asked for more than once.
+
+**Comments in the source stay in Japanese.** That is what the existing code does. Do not
+translate them.
+
+## Restart Finder after replacing the app
+
+Once the extension is swapped, Finder stops asking about badges. Follow a replacement with
+`killall Finder`. Say that the restart is happening rather than doing it silently.
