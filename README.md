@@ -45,23 +45,53 @@ an app that uses a restricted scope means brand review, data access review and
 possibly a third-party security assessment, and staying in "testing" instead
 caps the number of users and expires refresh tokens.
 
-Then open Gocci's settings and point it at the remote name and the folder you
-want it mounted in.
+Then open Gocci's settings, choose the folder you want it mounted in, and paste
+the client ID and secret in. Saving them re-runs the Google sign-in, because
+changing the client ID invalidates the token you already have.
 
 ## Settings
 
 | Item | Notes |
 | --- | --- |
 | Mount point | Any folder, including one on an external disk |
-| Cache folder | Empty means the same disk as the mount point |
-| rclone remote | The name from `rclone config`, default `gdrive` |
+| Client ID / secret | Written straight into your rclone remote |
+| Keep downloads for | 1 day, 1 week, 30 days or never delete |
+| Limit | Total cache size, 50GB by default |
+| Don't download when you open a folder | See below. On by default |
 | Language | Japanese / English, defaults to the system |
 | Launch at login | Mounts as soon as the disk is there |
 
+The account row only appears when `rclone config` holds more than one Drive
+remote. The cache folder is not on screen: it defaults to the disk the mount
+point is on, and `defaults write io.kkweb.gocci cacheDir <path>` moves it.
 Writing goes through `--vfs-cache-mode full`, so a file being written lives in
 the cache folder until it is uploaded. That is why the cache does not default
 to your internal disk — if you mounted on an external disk, you probably did it
 for the space.
+
+## What gets downloaded
+
+Nothing is downloaded until something reads it, and only the parts that were
+read. Two things change that.
+
+**Finder reads files to draw icon previews**, so opening a folder full of video
+would pull the video down. With *Don't download when you open a folder* on,
+Gocci turns icon previews off for every folder under the mount point by writing
+the view settings into `.DS_Store` — the same file Finder itself writes. That
+file lives on your Drive, which is why the setting can be switched off: on a
+shared folder, the people you share with see it too.
+
+**A file you played to the middle stays half-downloaded**, so Gocci fetches the
+rest in the background once at least 32MB of it has been used. That threshold is
+there because Finder reads a few megabytes of a large video just for the
+thumbnail. To turn it off: `defaults write io.kkweb.gocci fetchWholeFile -bool NO`.
+
+## Badges in Finder
+
+Files carry a badge for what is on this Mac: a cloud for nothing, a pie chart
+while it fills, a green check when it is complete. Right-clicking offers
+**Delete Download**, which drops the local copy and leaves the file on Drive.
+Anything not written back to Drive yet is kept.
 
 ## What the menu shows
 
