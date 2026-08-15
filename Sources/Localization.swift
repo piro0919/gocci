@@ -80,8 +80,10 @@ enum L {
     static func cachePurgeFailed(_ reason: String) -> String {
         t("消せませんでした: \(reason)", "Could not delete: \(reason)")
     }
-    static func cacheDiskFree(_ free: String) -> String {
-        t("キャッシュの置き場所の空き \(free)", "\(free) free where the cache lives")
+    static func cacheDiskFree(_ free: String, _ floor: String) -> String {
+        t(
+            "キャッシュの置き場所の空き \(free)。空きが \(floor) を切ると古いものから消えます",
+            "\(free) free where the cache lives. Old files go once it drops below \(floor)")
     }
     static func cacheLimitOverFree(_ free: String) -> String {
         t(

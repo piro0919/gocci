@@ -170,6 +170,7 @@ final class MountController {
         let remote = Settings.remote
         let options = Options(
             cacheMaxAge: Settings.cacheMaxAge, cacheMaxSize: Settings.cacheMaxSize,
+            cacheMinFreeSpace: Settings.cacheMinFreeSpace,
             keepsFinderSettings: Settings.keepsFinderSettings)
         state = .mounting
 
@@ -184,6 +185,7 @@ final class MountController {
     private struct Options {
         let cacheMaxAge: String
         let cacheMaxSize: String
+        let cacheMinFreeSpace: String
         let keepsFinderSettings: Bool
     }
 
@@ -222,6 +224,10 @@ final class MountController {
         }
         if !options.cacheMaxSize.isEmpty {
             task.arguments? += ["--vfs-cache-max-size", options.cacheMaxSize]
+        }
+        // 上限とは別の歯止め。上限が空きより大きいとき、ディスクが尽きるより先にこちらが効く
+        if !options.cacheMinFreeSpace.isEmpty {
+            task.arguments? += ["--vfs-cache-min-free-space", options.cacheMinFreeSpace]
         }
         // 既定では rclone が .DS_Store を捨てる。捨てられると Finder の表示設定が残らない
         if options.keepsFinderSettings {

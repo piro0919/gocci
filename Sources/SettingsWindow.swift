@@ -331,7 +331,8 @@ final class SettingsWindowController: NSWindowController {
         let limit = Settings.cacheLimit.bytes
         freeSpaceLabel.stringValue =
             (limit.map { $0 > free } ?? false)
-            ? L.cacheLimitOverFree(text) : L.cacheDiskFree(text)
+            ? L.cacheLimitOverFree(text)
+            : L.cacheDiskFree(text, Settings.cacheMinFreeSpace.replacingOccurrences(of: "G", with: "GB"))
         freeSpaceLabel.textColor =
             (limit.map { $0 > free } ?? false) ? .systemOrange : .secondaryLabelColor
         freeSpaceLabel.isHidden = false

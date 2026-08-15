@@ -159,6 +159,18 @@ enum Settings {
         return total
     }
 
+    /// キャッシュ先に残しておく空き（`--vfs-cache-min-free-space`）。
+    ///
+    /// 上限（`--vfs-cache-max-size`）だけでは、ディスクが埋まるのを防げない。rclone は
+    /// 空きを見ないので、上限を空きより大きく取ると上限は効かず、置き場所のほうが先に尽きる。
+    /// こちらを渡しておくと、空きがこの値を切ったところで古いものから消える。
+    /// 画面には出さない。既定で効かせ、変えたい人は
+    /// `defaults write io.kkweb.gocci cacheMinFreeSpace 20G` で上書きする
+    static var cacheMinFreeSpace: String {
+        let saved = UserDefaults.standard.string(forKey: "cacheMinFreeSpace") ?? ""
+        return saved.isEmpty ? "10G" : saved
+    }
+
     /// 穴あきファイルを作れるか。
     ///
     /// rclone は読んだところだけを持つ穴あきファイルでキャッシュを作る。FAT や exFAT は
