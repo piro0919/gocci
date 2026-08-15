@@ -150,10 +150,13 @@ final class MountController {
 
         // リンクの先へマウントしない。他のアプリがマウント先へのリンクを置いていることがあり、
         // そこへ乗せにいくと失敗する。失敗の後始末で、リンクの先を含むボリュームごと
-        // 外されることもある（CloudMounter の GoogleDrive で踏んだ）
-        if let type = try? FileManager.default.attributesOfItem(atPath: mountPoint)[.type] as? FileAttributeType,
-            type == .typeSymbolicLink
-        {
+        // 外されることもある（CloudMounter の GoogleDrive で踏んだ）。
+        //
+        // 見るのは lstat だけにする。`attributesOfItem` は拡張属性まで読みに行くので、
+        // 応答しないマウントの跡地に当てると `getxattr` から返らない。起動処理の中なので、
+        // そのままアプリ全体が立ち上がらなくなる（2026-08-16 実測）
+        var link = stat()
+        if lstat(mountPoint, &link) == 0, (link.st_mode & S_IFMT) == S_IFLNK {
             state = .failed(L.mountPointIsLink)
             return
         }
