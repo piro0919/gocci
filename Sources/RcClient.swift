@@ -100,6 +100,79 @@ struct RcClient {
         }.resume()
     }
 
+    // MARK: - 書く
+
+    /// フォルダを作る
+    func makeDirectory(path: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        call("operations/mkdir", ["fs": connection.remote, "remote": path]) {
+            completion($0.map { _ in () })
+        }
+    }
+
+    /// ファイルを1つ上げる。
+    ///
+    /// `operations/uploadfile` は JSON ではなく multipart で受け取る。ここだけ形が違う。
+    ///
+    /// 名前は `filename` がそのまま向こう側の名前になる。macOS が書き込みに使う一時ファイルは
+    /// `318181502` のような番号なので、渡す名前を別に決める。渡さないと、その番号のまま
+    /// Drive に並ぶ（2026-08-16 実測）
+    func upload(
+        local: URL, named name: String, toDirectory directory: String,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        guard let contents = try? Data(contentsOf: local) else {
+            return completion(.failure(Failure.noAnswer))
+        }
+
+        var components = URLComponents(
+            url: connection.base.appendingPathComponent("operations/uploadfile"),
+            resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "fs", value: connection.remote),
+            URLQueryItem(name: "remote", value: directory),
+        ]
+        guard let url = components?.url else { return completion(.failure(Failure.noAnswer)) }
+
+        let boundary = "gocci-\(UUID().uuidString)"
+        var body = Data()
+        body.append(Data("--\(boundary)\r\n".utf8))
+        body.append(
+            Data(
+                "Content-Disposition: form-data; name=\"file\"; filename=\"\(name)\"\r\n".utf8))
+        body.append(Data("Content-Type: application/octet-stream\r\n\r\n".utf8))
+        body.append(contents)
+        body.append(Data("\r\n--\(boundary)--\r\n".utf8))
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue(connection.authorization, forHTTPHeaderField: "Authorization")
+        request.httpBody = body
+        request.timeoutInterval = 600
+
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            if let error { return completion(.failure(error)) }
+            guard let status = (response as? HTTPURLResponse)?.statusCode, status < 400 else {
+                return completion(.failure(Failure.rejected("上げられませんでした")))
+            }
+            completion(.success(()))
+        }.resume()
+    }
+
+    /// ファイルを1つ消す
+    func deleteFile(path: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        call("operations/deletefile", ["fs": connection.remote, "remote": path]) {
+            completion($0.map { _ in () })
+        }
+    }
+
+    /// フォルダを中身ごと消す
+    func purge(path: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        call("operations/purge", ["fs": connection.remote, "remote": path]) {
+            completion($0.map { _ in () })
+        }
+    }
+
     private static func entry(from raw: [String: Any]) -> Entry? {
         guard let name = raw["Name"] as? String else { return nil }
 

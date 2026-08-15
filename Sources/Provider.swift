@@ -133,15 +133,27 @@ final class Provider {
 
     // MARK: - 外す
 
-    func stop() {
+    func stop(completion: (() -> Void)? = nil) {
         NSFileProviderManager.getDomainsWithCompletionHandler { domains, _ in
             let mine = domains.filter { $0.identifier == Self.domainIdentifier }
             guard let target = mine.first else {
-                Task { @MainActor in self.finishStopping() }
+                Task { @MainActor in
+                    self.finishStopping()
+                    completion?()
+                }
                 return
             }
-            NSFileProviderManager.remove(target) { _ in
-                Task { @MainActor in self.finishStopping() }
+            NSFileProviderManager.remove(target) { error in
+                Task { @MainActor in
+                    if let error {
+                        providerLogger.error(
+                            "外せなかった: \(error.localizedDescription, privacy: .public)")
+                    } else {
+                        providerLogger.info("外した")
+                    }
+                    self.finishStopping()
+                    completion?()
+                }
             }
         }
     }

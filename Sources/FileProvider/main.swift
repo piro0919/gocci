@@ -67,8 +67,14 @@ final class Item: NSObject, NSFileProviderItem {
     var contentModificationDate: Date? { modified }
     var creationDate: Date? { modified }
 
+    /// 何ができるか。ここで許していないことは、macOS がそもそも頼んでこない
     var capabilities: NSFileProviderItemCapabilities {
-        isDirectory ? [.allowsReading, .allowsContentEnumerating] : [.allowsReading]
+        if isDirectory {
+            return [
+                .allowsReading, .allowsContentEnumerating, .allowsAddingSubItems, .allowsDeleting,
+            ]
+        }
+        return [.allowsReading, .allowsWriting, .allowsDeleting]
     }
 
     var itemVersion: NSFileProviderItemVersion {
@@ -83,7 +89,9 @@ final class Root: NSObject, NSFileProviderItem {
     var parentItemIdentifier: NSFileProviderItemIdentifier { .rootContainer }
     var filename: String { "Gocci" }
     var contentType: UTType { .folder }
-    var capabilities: NSFileProviderItemCapabilities { [.allowsReading, .allowsContentEnumerating] }
+    var capabilities: NSFileProviderItemCapabilities {
+        [.allowsReading, .allowsContentEnumerating, .allowsAddingSubItems]
+    }
     var itemVersion: NSFileProviderItemVersion {
         NSFileProviderItemVersion(contentVersion: Data("1".utf8), metadataVersion: Data("1".utf8))
     }
@@ -299,23 +307,68 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
 
     // MARK: - 書き込み
 
-    // まだ受けない。読み取り側が固まるまでは、頼まれても断る。
-    // ただし断り方は選ぶ。macOS はゴミ箱を作ろうとしてここへ来るので、
-    // 一律で失敗を返すと列挙まで辿り着かない
-
     func createItem(
         basedOn itemTemplate: NSFileProviderItem, fields: NSFileProviderItemFields, contents url: URL?,
         options: NSFileProviderCreateItemOptions = [], request: NSFileProviderRequest,
         completionHandler: @escaping (NSFileProviderItem?, NSFileProviderItemFields, Bool, Error?) -> Void
     ) -> Progress {
-        // ゴミ箱の下は素通しにする。中身を持たないので、頼まれた通りを返しておく
+        let progress = Progress(totalUnitCount: 1)
+
+        // ゴミ箱の下は素通しにする。中身を持たないので、頼まれた通りを返しておく。
+        // ここで断ると、macOS は列挙まで辿り着かない（2026-08-16 実測）
         if itemTemplate.parentItemIdentifier == .trashContainer {
             completionHandler(itemTemplate, [], false, nil)
-            return Progress()
+            return progress
         }
 
-        completionHandler(nil, [], false, NSFileProviderError(.noSuchItem))
-        return Progress()
+        guard let client else {
+            completionHandler(nil, [], false, NSFileProviderError(.serverUnreachable))
+            return progress
+        }
+
+        let parent = Route.path(of: itemTemplate.parentItemIdentifier)
+        let name = itemTemplate.filename
+        let path = parent.isEmpty ? name : "\(parent)/\(name)"
+        let isDirectory = itemTemplate.contentType == .folder
+
+        /// 上げ終えたら、こちらの覚えも新しくして返す
+        let settle: (Int64) -> Void = { bytes in
+            let item = Item(
+                path: path, isDirectory: isDirectory, bytes: bytes,
+                modified: itemTemplate.contentModificationDate.flatMap { $0 } ?? Date())
+            Ledger.shared.remember(item)
+            logger.info("作った: \(path, privacy: .public)")
+            progress.completedUnitCount = 1
+            completionHandler(item, [], false, nil)
+        }
+
+        let refuse: (Error) -> Void = { error in
+            logger.error("作れなかった: \(path, privacy: .public) \(error.localizedDescription, privacy: .public)")
+            progress.completedUnitCount = 1
+            completionHandler(nil, [], false, NSFileProviderError(.serverUnreachable))
+        }
+
+        if isDirectory {
+            client.makeDirectory(path: path) { result in
+                switch result {
+                case .success: settle(0)
+                case .failure(let error): refuse(error)
+                }
+            }
+        } else {
+            guard let url else {
+                completionHandler(nil, [], false, NSFileProviderError(.noSuchItem))
+                return progress
+            }
+            let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+            client.upload(local: url, named: name, toDirectory: parent) { result in
+                switch result {
+                case .success: settle(bytes)
+                case .failure(let error): refuse(error)
+                }
+            }
+        }
+        return progress
     }
 
     func modifyItem(
@@ -324,8 +377,37 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
         options: NSFileProviderModifyItemOptions = [], request: NSFileProviderRequest,
         completionHandler: @escaping (NSFileProviderItem?, NSFileProviderItemFields, Bool, Error?) -> Void
     ) -> Progress {
-        completionHandler(nil, [], false, NSFileProviderError(.noSuchItem))
-        return Progress()
+        let progress = Progress(totalUnitCount: 1)
+
+        // 中身が変わったときだけ引き受ける。名前の変更や移動はまだ
+        guard let client, changedFields.contains(.contents), let newContents else {
+            completionHandler(item, [], false, nil)
+            return progress
+        }
+
+        let path = item.itemIdentifier.rawValue
+        let parent = (path as NSString).deletingLastPathComponent
+        let bytes =
+            (try? newContents.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+
+        client.upload(
+            local: newContents, named: (path as NSString).lastPathComponent,
+            toDirectory: parent
+        ) { result in
+            progress.completedUnitCount = 1
+            switch result {
+            case .failure(let error):
+                logger.error("書けなかった: \(path, privacy: .public) \(error.localizedDescription, privacy: .public)")
+                completionHandler(nil, [], false, NSFileProviderError(.serverUnreachable))
+            case .success:
+                let updated = Item(
+                    path: path, isDirectory: false, bytes: bytes, modified: Date())
+                Ledger.shared.remember(updated)
+                logger.info("書いた: \(path, privacy: .public)")
+                completionHandler(updated, [], false, nil)
+            }
+        }
+        return progress
     }
 
     func deleteItem(
@@ -333,8 +415,35 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
         options: NSFileProviderDeleteItemOptions = [], request: NSFileProviderRequest,
         completionHandler: @escaping (Error?) -> Void
     ) -> Progress {
-        completionHandler(NSFileProviderError(.noSuchItem))
-        return Progress()
+        let progress = Progress(totalUnitCount: 1)
+
+        guard let client else {
+            completionHandler(NSFileProviderError(.serverUnreachable))
+            return progress
+        }
+
+        let path = identifier.rawValue
+        let isDirectory = Ledger.shared.recall(identifier)?.isDirectory ?? false
+
+        let finish: (Result<Void, Error>) -> Void = { result in
+            progress.completedUnitCount = 1
+            switch result {
+            case .failure(let error):
+                logger.error("消せなかった: \(path, privacy: .public) \(error.localizedDescription, privacy: .public)")
+                completionHandler(NSFileProviderError(.serverUnreachable))
+            case .success:
+                logger.info("消した: \(path, privacy: .public)")
+                completionHandler(nil)
+            }
+        }
+
+        // フォルダは中身ごと。macOS はゴミ箱へ入れる前にここを通る
+        if isDirectory {
+            client.purge(path: path, completion: finish)
+        } else {
+            client.deleteFile(path: path, completion: finish)
+        }
+        return progress
     }
 
     func enumerator(

@@ -127,6 +127,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
+        // 繋ぎを外す。ドメインの出し入れはこの束（アプリ本体）からしかできないので、
+        // 外から叩ける口をここに開けておく
+        if CommandLine.arguments.contains("--file-provider-stop") {
+            Provider.shared.stop { NSApp.terminate(nil) }
+            return
+        }
+
         // マウント先が決まっていなければ、まず設定を出す。初回はここに来る
         if Settings.mountPoint.isEmpty || CommandLine.arguments.contains("--settings") {
             openSettings()
