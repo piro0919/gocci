@@ -50,6 +50,12 @@
       }
     ]
   },
+  "screens": {
+    "title": "What it looks like",
+    "lead": "A mark in the menu bar is all that stays on screen. The settings fit on one panel.",
+    "menu": "The menu: whether it is connected, and reveal or unmount",
+    "settings": "Settings: mount point, credentials, and how the cache is kept"
+  },
   "how": {
     "title": "How it works",
     "body": "rclone serves NFS on localhost and macOS mounts it. Files come down when you open them and stay in a cache. How long they stay, and how large the cache may grow, are yours to set.",

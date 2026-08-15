@@ -1,5 +1,5 @@
-import { getTranslations, setRequestLocale } from "next-intl/server";
 import Image from "next/image";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { ReactNode } from "react";
 import { LanguageSwitch } from "./language-switch";
 
@@ -26,14 +26,8 @@ function Section({
   return (
     <section className="px-6 py-20" id={id}>
       <div className="mx-auto max-w-5xl">
-        <h2 className="font-bold text-3xl tracking-tight sm:text-4xl">
-          {title}
-        </h2>
-        {lead ? (
-          <p className="mt-4 max-w-2xl text-lg text-ink/70 leading-relaxed">
-            {lead}
-          </p>
-        ) : null}
+        <h2 className="font-bold text-3xl tracking-tight sm:text-4xl">{title}</h2>
+        {lead ? <p className="mt-4 max-w-2xl text-lg text-ink/70 leading-relaxed">{lead}</p> : null}
         <div className="mt-10">{children}</div>
       </div>
     </section>
@@ -67,9 +61,7 @@ export default async function Page({ params }: PageProps) {
             <h1 className="mt-6 font-bold text-4xl leading-tight tracking-tight sm:text-5xl">
               {t("hero.title")}
             </h1>
-            <p className="mt-5 text-lg text-white/85 leading-relaxed">
-              {t("hero.tagline")}
-            </p>
+            <p className="mt-5 text-lg text-white/85 leading-relaxed">{t("hero.tagline")}</p>
 
             <div className="mt-9 flex flex-wrap items-center justify-center gap-4 lg:justify-start">
               <a
@@ -104,10 +96,7 @@ export default async function Page({ params }: PageProps) {
         <Section lead={t("problem.lead")} title={t("problem.title")}>
           <div className="grid gap-5 sm:grid-cols-3">
             {problems.map((item) => (
-              <div
-                className="rounded-2xl border border-line bg-white p-6"
-                key={item.title}
-              >
+              <div className="rounded-2xl border border-line bg-white p-6" key={item.title}>
                 <h3 className="font-bold text-lg">{item.title}</h3>
                 <p className="mt-3 text-ink/70 leading-relaxed">{item.body}</p>
               </div>
@@ -119,10 +108,7 @@ export default async function Page({ params }: PageProps) {
       <Section title={t("features.title")}>
         <div className="grid gap-5 sm:grid-cols-2">
           {features.map((item) => (
-            <div
-              className="rounded-2xl border border-line bg-white p-7"
-              key={item.title}
-            >
+            <div className="rounded-2xl border border-line bg-white p-7" key={item.title}>
               <h3 className="font-bold text-xl">{item.title}</h3>
               <p className="mt-3 text-ink/70 leading-relaxed">{item.body}</p>
             </div>
@@ -130,12 +116,38 @@ export default async function Page({ params }: PageProps) {
         </div>
       </Section>
 
+      {/* 実際の画面。メニューと設定の2枚だけ。窓の影は画像が持っている */}
+      <div className="grid-bg">
+        <Section lead={t("screens.lead")} title={t("screens.title")}>
+          <div className="grid items-start gap-8 sm:grid-cols-2">
+            <figure>
+              <Image
+                alt={t("screens.menu")}
+                className="w-full max-w-sm rounded-xl border border-line shadow-lg"
+                height={304}
+                src="/shot-menu.png"
+                width={560}
+              />
+              <figcaption className="mt-3 text-ink/60 text-sm">{t("screens.menu")}</figcaption>
+            </figure>
+            <figure>
+              <Image
+                alt={t("screens.settings")}
+                className="w-full max-w-sm rounded-xl border border-line shadow-lg"
+                height={617}
+                src="/shot-settings.png"
+                width={679}
+              />
+              <figcaption className="mt-3 text-ink/60 text-sm">{t("screens.settings")}</figcaption>
+            </figure>
+          </div>
+        </Section>
+      </div>
+
       {/* 仕組み。隠さずに書く。NFS で動くことは利点でもあり、制約でもある */}
       <div className="brand text-white">
         <Section title={t("how.title")}>
-          <p className="max-w-3xl text-lg text-white/85 leading-relaxed">
-            {t("how.body")}
-          </p>
+          <p className="max-w-3xl text-lg text-white/85 leading-relaxed">{t("how.body")}</p>
           <ul className="mt-8 space-y-3">
             {points.map((point) => (
               <li className="flex gap-3 text-white/85" key={point}>
@@ -150,10 +162,7 @@ export default async function Page({ params }: PageProps) {
       <Section title={t("install.title")}>
         <ol className="grid gap-5 sm:grid-cols-3">
           {steps.map((step, index) => (
-            <li
-              className="rounded-2xl border border-line bg-white p-6"
-              key={step.title}
-            >
+            <li className="rounded-2xl border border-line bg-white p-6" key={step.title}>
               <span className="font-bold text-teal-deep text-sm">
                 {String(index + 1).padStart(2, "0")}
               </span>
