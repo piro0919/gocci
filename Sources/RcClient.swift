@@ -59,6 +59,47 @@ struct RcClient {
         }
     }
 
+    /// 中身を配る口を立てる。合言葉は付けない——127.0.0.1 にだけ開くのと、
+    /// 港を毎回変えるので、そこは問い合わせ口と同じ考え方にしてある
+    func startHTTPServer(on port: UInt16, completion: @escaping (Result<Void, Error>) -> Void) {
+        call(
+            "serve/start",
+            ["type": "http", "fs": connection.remote, "addr": "127.0.0.1:\(port)"]
+        ) { completion($0.map { _ in () }) }
+    }
+
+    /// ファイルの一部だけを取る。
+    ///
+    /// 中身は `serve/start` で立てた HTTP の口から `Range` を付けて取る。丸ごと取らずに
+    /// 済むので、10GB の動画でも見ている辺りだけで済む（rclone の VFS がやっていたのと
+    /// 同じ考え方）。範囲が返ってこない相手なら、丸ごと返ってくる
+    func fetchRange(
+        path: String, offset: Int64, length: Int64,
+        completion: @escaping (Result<Data, Error>) -> Void
+    ) {
+        // 道はそのまま URL の一部になる。空白や日本語が入るので必ず逃がす
+        let escaped =
+            path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
+        guard let url = URL(string: connection.contentBase.absoluteString + "/" + escaped) else {
+            return completion(.failure(Failure.noAnswer))
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("bytes=\(offset)-\(offset + length - 1)", forHTTPHeaderField: "Range")
+        request.timeoutInterval = 120
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error { return completion(.failure(error)) }
+            guard let data, let http = response as? HTTPURLResponse else {
+                return completion(.failure(Failure.noAnswer))
+            }
+            guard http.statusCode == 206 || http.statusCode == 200 else {
+                return completion(.failure(Failure.rejected("中身を配る口が \(http.statusCode) を返しました")))
+            }
+            completion(.success(data))
+        }.resume()
+    }
+
     private static func entry(from raw: [String: Any]) -> Entry? {
         guard let name = raw["Name"] as? String else { return nil }
 

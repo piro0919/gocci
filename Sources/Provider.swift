@@ -77,12 +77,38 @@ final class Provider {
         }
         rclone = task
 
-        // 拡張は設定を読めない。どこへ訊けばいいかを控えに書く
-        RcEndpoint.write(
-            port: endpoint.port, user: endpoint.user, password: endpoint.password,
-            remote: Settings.remote + ":")
+        // 中身を配る口も開ける。範囲を指定して取るために、こちらは HTTP にする。
+        // 口が立つまで少し待つ。rcd が受け付けを始める前に頼むと届かない
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1) { [weak self] in
+            self?.startContentServer(endpoint: endpoint)
+        }
+    }
 
-        addDomain()
+    /// 中身を配る口。`serve/start` を rcd に頼んで立てる
+    private func startContentServer(endpoint: (port: UInt16, user: String, password: String)) {
+        let contentPort = Rc.freePort()
+        let client = RcClient(
+            connection: RcEndpoint.Connection(
+                port: endpoint.port, user: endpoint.user, password: endpoint.password,
+                remote: Settings.remote + ":", contentPort: contentPort))
+
+        client.startHTTPServer(on: contentPort) { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+                switch result {
+                case .failure(let error):
+                    providerLogger.error(
+                        "中身を配る口を開けなかった: \(error.localizedDescription, privacy: .public)")
+                    self.state = .failed(error.localizedDescription)
+                case .success:
+                    // 拡張は設定を読めない。どこへ訊けばいいかを控えに書く
+                    RcEndpoint.write(
+                        port: endpoint.port, user: endpoint.user, password: endpoint.password,
+                        remote: Settings.remote + ":", contentPort: contentPort)
+                    self.addDomain()
+                }
+            }
+        }
     }
 
     /// macOS へ申し出る。ここを通ると Finder のサイドバーに現れる

@@ -36,8 +36,11 @@ enum RcEndpoint {
         let password: String
         /// どのリモートを見せるか。`gdrive:` のような形
         let remote: String
+        /// 中身を配る口。範囲を指定して取るために、こちらは HTTP で持つ
+        let contentPort: UInt16
 
         var base: URL { URL(string: "http://127.0.0.1:\(port)")! }
+        var contentBase: URL { URL(string: "http://127.0.0.1:\(contentPort)")! }
 
         /// Basic 認証の中身
         var authorization: String {
@@ -46,9 +49,12 @@ enum RcEndpoint {
     }
 
     /// アプリ側から書く。rclone を起こしたらすぐに呼ぶ
-    static func write(port: UInt16, user: String, password: String, remote: String) {
+    static func write(
+        port: UInt16, user: String, password: String, remote: String, contentPort: UInt16
+    ) {
         let payload: [String: Any] = [
             "port": Int(port), "user": user, "password": password, "remote": remote,
+            "contentPort": Int(contentPort),
         ]
 
         let target = writeURL
@@ -66,11 +72,13 @@ enum RcEndpoint {
             let port = json["port"] as? Int,
             let user = json["user"] as? String,
             let password = json["password"] as? String,
-            let remote = json["remote"] as? String
+            let remote = json["remote"] as? String,
+            let contentPort = json["contentPort"] as? Int
         else { return nil }
 
         return Connection(
-            port: UInt16(truncatingIfNeeded: port), user: user, password: password, remote: remote)
+            port: UInt16(truncatingIfNeeded: port), user: user, password: password, remote: remote,
+            contentPort: UInt16(truncatingIfNeeded: contentPort))
     }
 
     /// 繋がりが切れたら消す。古い口を叩き続けないように

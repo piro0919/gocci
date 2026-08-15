@@ -35,7 +35,7 @@ enum Rc {
 
     /// 空いている港を訊く。0 番で開くと OS が選んでくれるので、それを聞いてすぐ閉じる。
     /// 閉じてから rclone が開くまでの隙間に他人が入る目は残るが、実用上はこれで足りる
-    private static func freePort() -> UInt16 {
+    static func freePort() -> UInt16 {
         let handle = socket(AF_INET, SOCK_STREAM, 0)
         guard handle >= 0 else { return 5572 }
         defer { Darwin.close(handle) }

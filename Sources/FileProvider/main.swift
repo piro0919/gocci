@@ -344,6 +344,96 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
     }
 }
 
+// MARK: - 途中だけ取る
+
+// 丸ごと落とさずに、読まれている辺りだけを渡す。10GB の動画を開いても、そこだけで済む。
+//
+// 決まりごとは3つ（`NSFileProviderReplicatedExtension.h` 1219行から）。
+//
+// - 渡す範囲は、頼まれた範囲を覆っていて、指定された単位の倍数に揃っていること
+// - 取った中身は、ファイルの中の同じ位置に置くこと。手前は穴のままでよい
+// - ファイルの大きさは、渡した範囲の終わりまであれば足りる
+
+extension GocciFileProvider: NSFileProviderPartialContentFetching {
+    func fetchPartialContents(
+        for itemIdentifier: NSFileProviderItemIdentifier, version requestedVersion: NSFileProviderItemVersion,
+        request: NSFileProviderRequest, minimalRange requestedRange: NSRange,
+        aligningTo alignment: Int, options: NSFileProviderFetchContentsOptions = [],
+        completionHandler: @escaping (URL?, NSFileProviderItem?, NSRange, NSFileProviderMaterializationFlags, Error?) -> Void
+    ) -> Progress {
+        let progress = Progress(totalUnitCount: 1)
+
+        resolve(itemIdentifier) { [weak self] item in
+            guard let self, let client = self.client, let item else {
+                completionHandler(nil, nil, NSRange(), [], NSFileProviderError(.noSuchItem))
+                return
+            }
+
+            // 頼まれた範囲を覆うように、指定された単位へ広げる
+            let start = (requestedRange.location / alignment) * alignment
+            let end = min(
+                Int(item.bytes),
+                ((requestedRange.location + requestedRange.length + alignment - 1) / alignment)
+                    * alignment)
+            let length = max(0, end - start)
+
+            guard length > 0 else {
+                completionHandler(nil, nil, NSRange(), [], NSFileProviderError(.noSuchItem))
+                return
+            }
+
+            client.fetchRange(
+                path: itemIdentifier.rawValue, offset: Int64(start), length: Int64(length)
+            ) { result in
+                progress.completedUnitCount = 1
+
+                switch result {
+                case .failure(let error):
+                    logger.error(
+                        "途中を取れなかった: \(error.localizedDescription, privacy: .public)")
+                    completionHandler(nil, nil, NSRange(), [], NSFileProviderError(.serverUnreachable))
+
+                case .success(let data):
+                    guard
+                        let file = Self.place(
+                            data, at: start, of: item, identifier: itemIdentifier)
+                    else {
+                        completionHandler(
+                            nil, nil, NSRange(), [], NSFileProviderError(.noSuchItem))
+                        return
+                    }
+
+                    let fetched = NSRange(location: start, length: data.count)
+                    logger.info(
+                        "途中を渡した: \(item.filename, privacy: .public) の \(start) から \(data.count) バイト")
+                    completionHandler(file, item, fetched, [], nil)
+                }
+            }
+        }
+        return progress
+    }
+
+    /// 取った中身を、ファイルの中の同じ位置へ置く。手前は穴のままにする
+    private static func place(
+        _ data: Data, at offset: Int, of item: Item, identifier: NSFileProviderItemIdentifier
+    ) -> URL? {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("part-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let file = directory.appendingPathComponent(item.filename)
+        guard FileManager.default.createFile(atPath: file.path, contents: nil),
+            let handle = try? FileHandle(forWritingTo: file)
+        else { return nil }
+        defer { try? handle.close() }
+
+        // 頭から書かずに位置を飛ばす。飛ばした分は穴になり、場所も食わない
+        try? handle.seek(toOffset: UInt64(offset))
+        try? handle.write(contentsOf: data)
+        return file
+    }
+}
+
 // MARK: - サムネイル
 
 // これまでは Finder が勝手に中身を読んでいた。ここでは macOS が「この絵をくれ」と訊きに来る。
