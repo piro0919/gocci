@@ -12,6 +12,7 @@ enum CachePeriod: String, CaseIterable {
     case day = "24h"
     case week = "168h"
     case month = "720h"
+    case quarter = "2160h"
     case forever = "off"
 
     var label: String {
@@ -19,6 +20,7 @@ enum CachePeriod: String, CaseIterable {
         case .day: return L.t("1日", "1 day")
         case .week: return L.t("1週間", "1 week")
         case .month: return L.t("30日", "30 days")
+        case .quarter: return L.t("90日", "90 days")
         case .forever: return L.t("消さない", "Never")
         }
     }
@@ -29,21 +31,29 @@ enum CachePeriod: String, CaseIterable {
 
 /// キャッシュの上限
 enum CacheLimit: String, CaseIterable {
+    case tiny = "5G"
     case small = "10G"
+    case modest = "25G"
     case medium = "50G"
+    case big = "100G"
     case large = "200G"
+    case huge = "500G"
     case unlimited = "off"
 
     var label: String {
         switch self {
-        case .small: return "10GB"
-        case .medium: return "50GB"
-        case .large: return "200GB"
         case .unlimited: return L.t("無制限", "No limit")
+        default: return rawValue.replacingOccurrences(of: "G", with: "GB")
         }
     }
 
     var argument: String { self == .unlimited ? "" : rawValue }
+
+    /// 何バイトぶんか。空きと比べるために使う。無制限は比べる相手がいない
+    var bytes: Int64? {
+        guard self != .unlimited, let number = Int64(rawValue.dropLast()) else { return nil }
+        return number * 1024 * 1024 * 1024
+    }
 }
 
 enum Settings {
@@ -98,6 +108,22 @@ enum Settings {
 
         let fallback = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
         return fallback?.appendingPathComponent("io.kkweb.gocci").path ?? NSTemporaryDirectory()
+    }
+
+    /// キャッシュ先のディスクの空き。
+    ///
+    /// 上限に並ぶ数字は、置き場所の空きと比べないと選びようがない。まだ作られていない
+    /// フォルダを訊いても答えは返らないので、実在する親まで遡って訊く
+    static var cacheDiskFreeBytes: Int64? {
+        var path = resolvedCacheDir
+        while !path.isEmpty, path != "/" {
+            if FileManager.default.fileExists(atPath: path) { break }
+            path = (path as NSString).deletingLastPathComponent
+        }
+
+        let values = try? URL(fileURLWithPath: path).resourceValues(
+            forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        return values?.volumeAvailableCapacityForImportantUsage
     }
 
     /// 穴あきファイルを作れるか。

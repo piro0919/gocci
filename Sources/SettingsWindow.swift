@@ -17,6 +17,7 @@ final class SettingsWindowController: NSWindowController {
     private let finderSettingsCheckbox = NSButton(
         checkboxWithTitle: L.keepFinderSettings, target: nil, action: nil)
     private let languagePopUp = NSPopUpButton()
+    private let freeSpaceLabel = NSTextField(labelWithString: "")
     private let messageLabel = NSTextField(labelWithString: "")
     /// 一度でも開いたか。入力欄に今の値が入っているかの判断に使う
     private var hasShown = false
@@ -56,6 +57,9 @@ final class SettingsWindowController: NSWindowController {
         limitPopUp.target = self
         limitPopUp.action = #selector(changeLimit)
         for limit in CacheLimit.allCases { limitPopUp.addItem(withTitle: limit.label) }
+
+        freeSpaceLabel.font = .systemFont(ofSize: 11)
+        freeSpaceLabel.textColor = .secondaryLabelColor
         clientIDField.placeholderString = "…apps.googleusercontent.com"
 
         launchCheckbox.target = self
@@ -85,16 +89,7 @@ final class SettingsWindowController: NSWindowController {
             title: L.checkForUpdates, target: self, action: #selector(checkForUpdates))
         updateButton.bezelStyle = .rounded
 
-        // 更新でアプリを入れ替えると拡張も入れ替わり、Finder を再起動するまでバッジが出ない。
-        // 戻す手立ては要るが、普段の操作に混ぜる話ではないのでここに置く
-        let restartFinderButton = NSButton(
-            title: L.restartFinder, target: self, action: #selector(restartFinder))
-        restartFinderButton.bezelStyle = .rounded
-
-        let buttonRow = NSStackView(views: [updateButton, restartFinderButton])
-        buttonRow.orientation = .horizontal
-        buttonRow.spacing = 10
-        let buttons = aligned(buttonRow)
+        let buttons = aligned(updateButton)
 
         let about = NSTextField(labelWithString: "Gocci \(version)")
         about.textColor = .secondaryLabelColor
@@ -115,6 +110,7 @@ final class SettingsWindowController: NSWindowController {
             divider(),
             row(L.cacheMaxAge, periodPopUp),
             row(L.cacheMaxSize, limitPopUp),
+            aligned(freeSpaceLabel),
             checkboxRow(finderSettingsCheckbox),
             hint(L.keepFinderSettingsHint),
             divider(),
@@ -122,7 +118,6 @@ final class SettingsWindowController: NSWindowController {
             checkboxRow(launchCheckbox),
             messageLabel,
             buttons,
-            hint(L.restartFinderHint),
             aligned(about),
         ])
         stack.orientation = .vertical
@@ -185,6 +180,7 @@ final class SettingsWindowController: NSWindowController {
 
         periodPopUp.selectItem(at: CachePeriod.allCases.firstIndex(of: Settings.cachePeriod) ?? 0)
         limitPopUp.selectItem(at: CacheLimit.allCases.firstIndex(of: Settings.cacheLimit) ?? 0)
+        showFreeSpace()
 
         let credentials = RcloneConfig.values(of: Settings.remote)
         clientIDField.stringValue = credentials["client_id"] ?? ""
@@ -258,6 +254,29 @@ final class SettingsWindowController: NSWindowController {
         let index = limitPopUp.indexOfSelectedItem
         guard CacheLimit.allCases.indices.contains(index) else { return }
         Settings.cacheLimit = CacheLimit.allCases[index]
+        showFreeSpace()
+    }
+
+    /// 上限の下に、置き場所の空きを出す。
+    ///
+    /// 数字だけ並べても、置き場所の空きと比べなければ選びようがない。選んだ上限が空きを
+    /// 超えているときは、そこだけ言い方を変える。rclone は空きを見ないので、上限が空きより
+    /// 大きいと上限は効かず、ディスクが先に埋まる
+    private func showFreeSpace() {
+        guard let free = Settings.cacheDiskFreeBytes else {
+            freeSpaceLabel.stringValue = ""
+            freeSpaceLabel.isHidden = true
+            return
+        }
+
+        let text = ByteCountFormatter.string(fromByteCount: free, countStyle: .file)
+        let limit = Settings.cacheLimit.bytes
+        freeSpaceLabel.stringValue =
+            (limit.map { $0 > free } ?? false)
+            ? L.cacheLimitOverFree(text) : L.cacheDiskFree(text)
+        freeSpaceLabel.textColor =
+            (limit.map { $0 > free } ?? false) ? .systemOrange : .secondaryLabelColor
+        freeSpaceLabel.isHidden = false
     }
 
     @objc private func toggleFinderSettings() {
@@ -349,14 +368,6 @@ final class SettingsWindowController: NSWindowController {
         label.textColor = .secondaryLabelColor
 
         return aligned(label)
-    }
-
-    /// Finder を再起動する。開いているウィンドウが閉じるので、押した本人が選ぶ形にしてある
-    @objc private func restartFinder() {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
-        task.arguments = ["Finder"]
-        try? task.run()
     }
 
     @objc private func checkForUpdates() {
