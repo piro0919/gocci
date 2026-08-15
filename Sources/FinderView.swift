@@ -11,7 +11,9 @@ import OSLog
 // （Finder.sdef 332-333 行）。フォルダごとにウィンドウを開かせるのは現実的ではないので、
 // こちらで書く。
 //
-// 触るのは、まだ表示設定を持たないフォルダだけにする。利用者が自分で決めた設定は残す。
+// 既に表示設定を持つフォルダも覆う。以前から開いていたフォルダほどプレビューが生きており、
+// そこを開くと中身が丸ごと落ちてくる（実測: `Images` を開いて 139MB）。
+// 書き換えるのは `showIconPreview` の一項目だけで、並び順も列幅もアイコンの大きさも残す。
 
 private let viewLogger = Logger(subsystem: "io.kkweb.gocci", category: "finderview")
 
@@ -124,8 +126,13 @@ enum FinderView {
     ///
     /// 人が Finder で開く場所ではないのに、数だけが桁違いに多い。一つのリポジトリの
     /// `node_modules` だけで待ち行列が数百に膨らみ、その間ほかのフォルダが手つかずになる。
-    /// フォルダ自身の設定は親の `.DS_Store` に入るので、開いてもプレビューは出ない
-    private static let doNotEnter: Set<String> = ["node_modules"]
+    /// `Miniconda3` ひとつで1時間以上を使った（2026-08-16 実測）。
+    /// フォルダ自身の設定は親の `.DS_Store` に入るので、開いてもプレビューは出ない。
+    ///
+    /// `.git` などの隠しフォルダはここに要らない。`subdirectories` が先に弾いている
+    private static let doNotEnter: Set<String> = [
+        "node_modules", "__pycache__", "site-packages",
+    ]
 
     /// 待ち行列を歩いて、プレビューを切って回る。
     ///
@@ -237,21 +244,33 @@ enum FinderView {
             }
         }
 
-        // 既に設定を持っているフォルダは、その人の決めた通りにしておく
+        // 既に設定を持っているフォルダは、プレビューの一項目だけ書き換える。
+        // 一式を作り直すと、並び順も列幅もアイコンの大きさも既定に戻ってしまう
+        let wanted = Set(children)
         var settled = Set<String>()
-        for record in records where viewRecords.contains(record.id) {
+        var changed = false
+
+        for index in records.indices where viewRecords.contains(records[index].id) {
+            let record = records[index]
+            guard wanted.contains(record.name) else { continue }
             settled.insert(record.name)
+
+            guard let payload = previewDisabled(record.payload) else { continue }
+            records[index] = DSStoreRecord(
+                name: record.name, id: record.id, type: record.type, payload: payload)
+            changed = true
         }
 
         let missing = children.filter { !settled.contains($0) }
-        guard !missing.isEmpty else { return false }
-
         for name in missing {
             for (id, blob) in Self.blobs() {
                 records.append(
                     DSStoreRecord(name: name, id: id, type: "blob", payload: blob))
             }
+            changed = true
         }
+
+        guard changed else { return false }
 
         do {
             try DSStore.write(records, to: path)
@@ -267,6 +286,21 @@ enum FinderView {
     ///
     /// 空の配列と混ぜない。繋がりが切れている間は一覧が取れず、混ぜると
     /// 「子の無いフォルダ」として片付いたことになってしまう
+    /// 既にある表示設定から、プレビューの一項目だけを落とす。
+    ///
+    /// 既に切ってあるものと、読めないものは nil。書き直す必要が無い
+    private static func previewDisabled(_ payload: Data) -> Data? {
+        guard
+            var plist = try? PropertyListSerialization.propertyList(
+                from: payload, options: [], format: nil) as? [String: Any],
+            (plist["showIconPreview"] as? Bool) != false
+        else { return nil }
+
+        plist["showIconPreview"] = false
+        return try? PropertyListSerialization.data(
+            fromPropertyList: plist, format: .binary, options: 0)
+    }
+
     private static func subdirectories(of directory: String) -> [String]? {
         let manager = FileManager.default
         guard let names = try? manager.contentsOfDirectory(atPath: directory) else { return nil }
