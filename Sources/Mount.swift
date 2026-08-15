@@ -671,6 +671,8 @@ final class MountController {
 
     /// 最後に応答を確かめた時刻。表に載っているかどうかだけでは、生きているか分からない
     private var lastProbe = Date()
+    /// マウントの有無を問い合わせている最中か。主スレッドからだけ触る
+    private var checkingMount = false
     /// 応答を確かめる間隔
     private static let probeInterval: TimeInterval = 60
 
@@ -736,9 +738,30 @@ final class MountController {
         guard state == .mounted || state == .unmounted else { return }
         probeIfDue()
 
-        let mounted = Mounts.isMounted(Settings.mountPoint)
-        if mounted, state == .unmounted { state = .mounted }
-        if !mounted, state == .mounted { state = .unmounted }
+        // statfs は主スレッドで呼ばない。相手の応答が滞ると、その場で返らなくなる。
+        // 5秒ごとに呼ばれるので、詰まっている間は主スレッドが止まりっぱなしになり、
+        // メニューバーの印を押してもメニューが出ない（2026-08-15 実測。3秒とった
+        // 標本が全て `refresh → isMounted → statfs` の中だった）
+        // 前の問い合わせが返っていないなら、重ねて積まない。5秒ごとに来るので、
+        // 詰まっている間に何十件も溜まる
+        guard !checkingMount else { return }
+        checkingMount = true
+
+        let path = Settings.mountPoint
+        queue.async { [weak self] in
+            let mounted = Mounts.isMounted(path)
+
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.checkingMount = false
+                guard self.state == .mounted || self.state == .unmounted else { return }
+                // 待っている間に繋ぎ先を変えられたら、その結果は捨てる
+                guard path == Settings.mountPoint else { return }
+
+                if mounted, self.state == .unmounted { self.state = .mounted }
+                if !mounted, self.state == .mounted { self.state = .unmounted }
+            }
+        }
     }
 
     private func finish(_ next: MountState) {
