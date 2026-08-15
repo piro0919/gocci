@@ -1,5 +1,7 @@
+import CoreGraphics
 import FileProvider
 import Foundation
+import ImageIO
 import OSLog
 import UniformTypeIdentifiers
 
@@ -131,8 +133,11 @@ final class Enumerator: NSObject, NSFileProviderEnumerator {
     func enumerateItems(
         for observer: NSFileProviderEnumerationObserver, startingAt page: NSFileProviderPage
     ) {
-        // ゴミ箱の中身は持たない。空だと答える
-        guard container != .trashContainer else {
+        // ゴミ箱と作業組は中身を持たない。空だと答える。
+        //
+        // 作業組（`workingSet`）は macOS が内部で使う入れ物で、Drive の道ではない。
+        // そのまま rclone へ渡すと `directory not found` になる（2026-08-16 実測）
+        guard container != .trashContainer, container != .workingSet else {
             observer.finishEnumerating(upTo: nil)
             return
         }
@@ -207,10 +212,57 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
             if let known = Ledger.shared.recall(identifier) {
                 completionHandler(known, nil)
             } else {
-                completionHandler(nil, NSFileProviderError(.noSuchItem))
+                // 台帳は拡張が起き直すと空になる。訊かれたものが無ければ、
+                // 親を並べ直して探す。macOS は前に見たものを覚えていて、
+                // こちらが忘れていても平気で訊いてくる
+                find(identifier, completion: completionHandler)
             }
         }
         return Progress()
+    }
+
+    /// 台帳を先に見て、無ければ親を並べ直して探す。
+    ///
+    /// macOS は前に見たものを覚えていて、列挙を挟まずに訊いてくることがある。
+    /// 絵を頼まれるときがまさにそれで、台帳だけを見ていると必ず空振りする
+    func resolve(
+        _ identifier: NSFileProviderItemIdentifier, completion: @escaping (Item?) -> Void
+    ) {
+        if let known = Ledger.shared.recall(identifier) {
+            completion(known)
+            return
+        }
+        find(identifier) { item, _ in completion(item as? Item) }
+    }
+
+    /// 親フォルダを並べ直して、その中から探す
+    private func find(
+        _ identifier: NSFileProviderItemIdentifier,
+        completion: @escaping (NSFileProviderItem?, Error?) -> Void
+    ) {
+        guard let client else {
+            completion(nil, NSFileProviderError(.serverUnreachable))
+            return
+        }
+
+        let path = identifier.rawValue
+        let parent = (path as NSString).deletingLastPathComponent
+        let name = (path as NSString).lastPathComponent
+
+        client.list(parent) { result in
+            guard case .success(let entries) = result,
+                let found = entries.first(where: { $0.name == name })
+            else {
+                completion(nil, NSFileProviderError(.noSuchItem))
+                return
+            }
+
+            let item = Item(
+                path: path, isDirectory: found.isDirectory, bytes: found.size,
+                modified: found.modified)
+            Ledger.shared.remember(item)
+            completion(item, nil)
+        }
     }
 
     func fetchContents(
@@ -289,5 +341,90 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
         for containerItemIdentifier: NSFileProviderItemIdentifier, request: NSFileProviderRequest
     ) throws -> NSFileProviderEnumerator {
         Enumerator(containerItemIdentifier, client: client)
+    }
+}
+
+// MARK: - サムネイル
+
+// これまでは Finder が勝手に中身を読んでいた。ここでは macOS が「この絵をくれ」と訊きに来る。
+// 訊かれた側が、渡すか渡さないかを決められる。断っても本体は読まれない。
+//
+// Drive はサムネイルの絵を持っているが、rclone の一覧には出てこない（2026-08-16 に確認。
+// `metadata` を付けても `thumbnailLink` は返らない）。なので、こちらで作る。
+//
+// 作るために本体を落とすのでは元の木阿弥なので、小さい絵だけに限る。動画や大きな素材は
+// 断る。断ると macOS は書類の種類に応じた絵を出す。
+//
+// 返した絵は macOS が保管する。`itemVersion.contentVersion` が変わるまで訊かれない
+
+extension GocciFileProvider: NSFileProviderThumbnailing {
+    /// これより大きいものは作らない。落とす量が見合わない
+    private static let thumbnailLimit: Int64 = 20_000_000
+
+    func fetchThumbnails(
+        for itemIdentifiers: [NSFileProviderItemIdentifier], requestedSize size: CGSize,
+        perThumbnailCompletionHandler: @escaping (NSFileProviderItemIdentifier, Data?, Error?) -> Void,
+        completionHandler: @escaping (Error?) -> Void
+    ) -> Progress {
+        let progress = Progress(totalUnitCount: Int64(itemIdentifiers.count))
+        let group = DispatchGroup()
+        logger.info("絵を訊かれた: \(itemIdentifiers.count) 件")
+
+        for identifier in itemIdentifiers {
+            group.enter()
+
+            /// 「絵は無い」と答える。これは失敗ではない。macOS は書類の種類に応じた絵を出す
+            let giveUp = {
+                perThumbnailCompletionHandler(identifier, nil, nil)
+                progress.completedUnitCount += 1
+                group.leave()
+            }
+
+            resolve(identifier) { [weak self] item in
+                guard let self, let client = self.client, let item,
+                    !item.isDirectory, item.bytes <= Self.thumbnailLimit,
+                    item.contentType.conforms(to: .image)
+                else { return giveUp() }
+
+                let scratch = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("thumb-\(UUID().uuidString)")
+
+                client.copy(path: identifier.rawValue, to: scratch) { result in
+                    defer { try? FileManager.default.removeItem(at: scratch) }
+
+                    guard case .success = result else { return giveUp() }
+
+                    let art = Self.shrink(scratch, to: size)
+                    logger.info(
+                        "絵を返した: \(item.filename, privacy: .public)（\(art?.count ?? 0) バイト）")
+                    perThumbnailCompletionHandler(identifier, art, nil)
+                    progress.completedUnitCount += 1
+                    group.leave()
+                }
+            }
+        }
+
+        group.notify(queue: .global()) { completionHandler(nil) }
+        return progress
+    }
+
+    /// 絵を縮める。元の絵は開かずに、ImageIO に縮小だけ頼む
+    private static func shrink(_ url: URL, to size: CGSize) -> Data? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: Int(max(size.width, size.height)),
+        ]
+        guard
+            let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary),
+            let data = CFDataCreateMutable(nil, 0),
+            let target = CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil)
+        else { return nil }
+
+        CGImageDestinationAddImage(target, image, nil)
+        guard CGImageDestinationFinalize(target) else { return nil }
+        return data as Data
     }
 }
