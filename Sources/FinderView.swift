@@ -111,8 +111,9 @@ enum FinderView {
 
         // 呼ばれるのは queue の上から。歩き回っている最中は、それが終わるまで順番を待つ。
         // 同じ `.DS_Store` を二人で書くと、どちらかの書き込みが消える
-        let children = subdirectories(of: path)
-        guard !children.isEmpty, apply(to: children, in: path) else { return }
+        guard let children = subdirectories(of: path), !children.isEmpty,
+            apply(to: children, in: path)
+        else { return }
         viewLogger.info("開いたフォルダの一段先を覆った: \(path, privacy: .public)")
     }
 
@@ -136,16 +137,26 @@ enum FinderView {
         var folders = 0
 
         while let directory = queue.popLast() {
-            // 設定を切られた、外付けを抜かれた。その場でやめて、残りは控えに残す
-            guard Settings.keepsFinderSettings,
-                FileManager.default.fileExists(atPath: mountPoint)
-            else {
+            // 設定を切られた、繋がりが切れた。その場でやめて、残りは控えに残す。
+            //
+            // マウント先の有無では足りない。rclone が落ちてもその場所は残り、中を覗くと
+            // 空に見える。それを「子の無いフォルダ」と読むと、残り全部を歩いたことにして
+            // 控えまで消してしまう（2026-08-15 に実際に起きた。rclone が落ちた4秒後に
+            // 「歩き終えた」と出て、上位11フォルダが手つかずのまま残った）
+            guard Settings.keepsFinderSettings, MountController.shared.state == .mounted else {
                 savePending(queue + [directory], mountPoint: mountPoint)
                 viewLogger.info("途中で止めた: 残り \(queue.count + 1) フォルダ")
                 return
             }
 
-            let children = subdirectories(of: directory)
+            // 読めなかったのか、本当に子が無いのか。前者を後者として扱わない
+            guard let children = subdirectories(of: directory) else {
+                savePending(queue + [directory], mountPoint: mountPoint)
+                viewLogger.info(
+                    "一覧が取れないので止めた: \(directory, privacy: .public)（残り \(queue.count + 1) フォルダ）")
+                return
+            }
+
             if !children.isEmpty {
                 folders += children.count
                 if apply(to: children, in: directory) { touched += 1 }
@@ -243,9 +254,13 @@ enum FinderView {
         }
     }
 
-    private static func subdirectories(of directory: String) -> [String] {
+    /// 中のフォルダの名前。一覧そのものが取れなかったときは nil。
+    ///
+    /// 空の配列と混ぜない。繋がりが切れている間は一覧が取れず、混ぜると
+    /// 「子の無いフォルダ」として片付いたことになってしまう
+    private static func subdirectories(of directory: String) -> [String]? {
         let manager = FileManager.default
-        guard let names = try? manager.contentsOfDirectory(atPath: directory) else { return [] }
+        guard let names = try? manager.contentsOfDirectory(atPath: directory) else { return nil }
 
         return names.filter { name in
             guard !name.hasPrefix(".") else { return false }
