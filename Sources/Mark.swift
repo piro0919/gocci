@@ -1,12 +1,12 @@
 import AppKit
 
-// Gocci の印。雲の下半分が円盤（ディスク）になっている。
+// Gocci の印。渦巻きの殻を背負ったヤドカリ。
 //
-// メニューバーでの実寸は 18pt しかないので、絵ではなく図形として組む。塊同士の
-// 組み合わせだけで出来ているため、縮めても輪郭が残る。
+// メニューバーでの実寸は 18pt しかない。形は `Resources/mark-solid.png` と
+// `Resources/mark-outline.png` の2枚が持っていて、ここでは読み込んで単色として
+// 扱うだけにする。塗りと中抜きは同じ枠で切ってあるので、状態が変わっても印は動かない。
 //
-// 同じ形をアプリのアイコン（1024px）でも使う。大小で別々に作ると必ずずれるので、
-// 座標は 100×100 の升目で一度だけ決めて、あとは倍率を掛ける。
+// 待ちは塗りを薄くしたもの、不具合は中抜きにバッジを重ねたもので、どちらもここで作る。
 
 enum Mark {
     /// メニューバーでの見せ方
@@ -22,70 +22,48 @@ enum Mark {
     }
 
     // MARK: - 形
-    //
-    // 幅 100・高さ 76 の升目で設計する。縦横で別々の倍率を掛けると円が歪むので、
-    // 倍率は幅からの1つだけにする。
 
-    /// 設計に使う升目の縦横比。画像の大きさもこれに合わせる
-    static let aspect: CGFloat = 100 / 76
+    /// 印の縦横比。2枚は同じ枠なので、どちらから取っても同じ
+    static var aspect: CGFloat {
+        guard let size = art(.solid)?.size, size.height > 0 else { return 1 }
+        return size.width / size.height
+    }
 
-    /// 雲。円盤より狭くする。同じ幅だと重なって、ひと塊の雲にしか見えない
-    static func cloud(in box: CGRect) -> CGPath {
-        let s = box.width / 100
-        let at = { (x: CGFloat, y: CGFloat, r: CGFloat) in
-            CGRect(
-                x: box.minX + (x - r) * s, y: box.minY + (y - r) * s,
-                width: r * 2 * s, height: r * 2 * s)
+    /// 印の絵。アプリの中では束の中、道具から呼ぶときは作業場所の Resources から読む
+    private static func art(_ style: Style) -> NSImage? {
+        let name = (style == .outline || style == .badged) ? "mark-outline" : "mark-solid"
+        if let cached = cache[name] { return cached }
+
+        var found: NSImage?
+        if let url = Bundle.main.url(forResource: name, withExtension: "png") {
+            found = NSImage(contentsOf: url)
         }
-
-        let path = CGMutablePath()
-        path.addEllipse(in: at(50, 52, 22))  // 中央の高いふくらみ
-        path.addEllipse(in: at(28, 44, 16))
-        path.addEllipse(in: at(72, 44, 16))
-        // ふくらみの下を埋めて、底をまっすぐ円盤へ落とす
-        path.addRect(
-            CGRect(x: box.minX + 12 * s, y: box.minY + 38 * s, width: 76 * s, height: 10 * s))
-        return path
+        if found == nil {
+            found = NSImage(contentsOfFile: "Resources/\(name).png")
+        }
+        cache[name] = found
+        return found
     }
 
-    /// 円盤。斜め上から見た楕円。雲より広く取らないと、雲の裾に飲まれて見えなくなる
-    static func disk(in box: CGRect) -> CGPath {
-        let s = box.width / 100
-        let path = CGMutablePath()
-        path.addEllipse(
-            in: CGRect(x: box.minX, y: box.minY, width: 100 * s, height: 28 * s))
-        return path
-    }
-
-    /// 雲と円盤を合わせた輪郭。
-    ///
-    /// 雲と円盤は離す。くっつけると裾の広い一つの塊になり、帽子にしか見えなくなる。
-    /// 部品を重ねただけの道を線で描くと内側の線が全部出るので、雲は先に一つへまとめる
-    static func silhouette(in box: CGRect) -> CGPath {
-        let path = CGMutablePath()
-        path.addPath(merged(cloud(in: box)))
-        path.addPath(disk(in: box))
-        return path
-    }
-
-    /// 重なった部品を一つの形にまとめる
-    private static func merged(_ path: CGPath) -> CGPath {
-        path.union(CGMutablePath())
-    }
+    private nonisolated(unsafe) static var cache: [String: NSImage?] = [:]
 
     // MARK: - 絵にする
 
     /// 指定した高さの画像を作る。メニューバー用は単色として扱わせる
     static func image(height: CGFloat, style: Style, template: Bool = true) -> NSImage {
-        // 円盤のぶん横に広いので、幅は高さの 1.15 倍
-        let size = NSSize(width: (height * 1.15).rounded(), height: height)
+        // 升目より横に広い。倍率は升目の縦横比から取る
+        let size = NSSize(width: (height * aspect).rounded(), height: height)
         let image = NSImage(size: size)
 
         image.lockFocus()
         defer { image.unlockFocus() }
         guard let ctx = NSGraphicsContext.current?.cgContext else { return image }
 
-        let box = CGRect(origin: .zero, size: size).insetBy(dx: size.width * 0.04, dy: height * 0.1)
+        // 升目の比のまま中央に置く。不具合のバッジが下へ少しはみ出すので、余白を残す
+        let boxWidth = size.width * 0.86
+        let box = CGRect(
+            x: (size.width - boxWidth) / 2, y: (height - boxWidth / aspect) / 2,
+            width: boxWidth, height: boxWidth / aspect)
         draw(in: ctx, box: box, style: style, color: .black)
 
         image.isTemplate = template
@@ -93,29 +71,17 @@ enum Mark {
     }
 
     static func draw(in ctx: CGContext, box: CGRect, style: Style, color: NSColor) {
-        let shape = silhouette(in: box)
+        guard let art = art(style), let mask = art.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        else { return }
 
-        switch style {
-        case .solid:
-            ctx.setFillColor(color.cgColor)
-            ctx.addPath(shape)
-            ctx.fillPath()
+        // 絵は黒に透明度だけを持たせてある。それを型紙にして、指定の色で塗る
+        ctx.saveGState()
+        ctx.clip(to: box, mask: mask)
+        ctx.setFillColor(color.withAlphaComponent(style == .dim ? 0.4 : 1).cgColor)
+        ctx.fill(box)
+        ctx.restoreGState()
 
-        case .dim:
-            ctx.setFillColor(color.withAlphaComponent(0.4).cgColor)
-            ctx.addPath(shape)
-            ctx.fillPath()
-
-        case .outline, .badged:
-            // 中抜き。線は実寸で 1.5px 相当まで太らせないと、18pt で消える
-            ctx.setStrokeColor(color.cgColor)
-            ctx.setLineWidth(max(1.4, box.width * 0.075))
-            ctx.setLineJoin(.round)
-            ctx.addPath(shape)
-            ctx.strokePath()
-
-            if style == .badged { drawBadge(in: ctx, box: box, color: color) }
-        }
+        if style == .badged { drawBadge(in: ctx, box: box, color: color) }
     }
 
     /// 不具合の印。右下に小さな丸を置き、地の輪郭をくり抜いてから重ねる。
