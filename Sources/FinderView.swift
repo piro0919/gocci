@@ -134,6 +134,15 @@ enum FinderView {
         "node_modules", "__pycache__", "site-packages",
     ]
 
+    /// 中まで降りるかどうか。
+    ///
+    /// 名前の一致だけでは足りない。Google ドライブは同期がぶつかると
+    /// `node_modules (選択型同期の競合)` のように後ろを足した名前で複製を残す。
+    /// 実際にこれで 541 フォルダを歩きかけた（2026-08-16 実測）
+    private static func mayEnter(_ name: String) -> Bool {
+        !doNotEnter.contains { name == $0 || name.hasPrefix($0 + " ") }
+    }
+
     /// 待ち行列を歩いて、プレビューを切って回る。
     ///
     /// `.DS_Store` の書き込みは Drive へ上がる。設定を入れた人が承知の上で頼んだ動きなので
@@ -180,7 +189,7 @@ enum FinderView {
             // 中まで降りないものは積まない。名前は親の `.DS_Store` に既に入れてある
             queue.append(
                 contentsOf: children
-                    .filter { !doNotEnter.contains($0) }
+                    .filter { mayEnter($0) }
                     .map { (directory as NSString).appendingPathComponent($0) })
             savePending(queue, mountPoint: mountPoint)
         }
