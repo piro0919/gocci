@@ -14,14 +14,17 @@ enum Rc {
     /// 今の口。マウントのたびに作り直す
     private(set) static var endpoint: (port: UInt16, user: String, password: String)?
 
-    /// 新しい口を用意して、rclone へ渡す引数を返す
-    static func prepare() -> [String] {
+    /// 新しい口を用意して、rclone へ渡す引数を返す。
+    ///
+    /// `--rc` を付けるのは、口を「ついでに」開けるとき——つまり `nfsmount` のとき。
+    /// `rcd` は口を開けること自体が仕事なので、付けると弾かれる
+    /// （`CRITICAL: Don't supply --rc flag when using rcd`。2026-08-16 実測）
+    static func prepare(alongsideMount: Bool = true) -> [String] {
         let port = freePort()
         let password = UUID().uuidString
         endpoint = (port, "gocci", password)
 
-        return [
-            "--rc",
+        return (alongsideMount ? ["--rc"] : []) + [
             "--rc-addr", "127.0.0.1:\(port)",
             "--rc-user", "gocci",
             "--rc-pass", password,

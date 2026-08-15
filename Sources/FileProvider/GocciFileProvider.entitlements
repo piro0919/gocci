@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- File Provider 拡張はサンドボックスが必須。Finder 拡張と同じで、
+       付けずに署名すると一覧に載らない -->
+  <key>com.apple.security.app-sandbox</key><true/>
+  <!-- 手元の rclone へ HTTP で訊く。これが無いと繋がらない -->
+  <key>com.apple.security.network.client</key><true/>
+</dict>
+</plist>

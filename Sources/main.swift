@@ -120,6 +120,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
 
+        // 作り直しの最中。`--file-provider` を付けたときだけ、Drive を「クラウドのフォルダ」
+        // として繋ぐ。普段の道（NFS のマウント）はそのまま残してある
+        if CommandLine.arguments.contains("--file-provider") {
+            Provider.shared.start()
+            return
+        }
+
         // マウント先が決まっていなければ、まず設定を出す。初回はここに来る
         if Settings.mountPoint.isEmpty || CommandLine.arguments.contains("--settings") {
             openSettings()
