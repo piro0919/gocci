@@ -18,6 +18,8 @@ final class SettingsWindowController: NSWindowController {
         checkboxWithTitle: L.keepFinderSettings, target: nil, action: nil)
     private let languagePopUp = NSPopUpButton()
     private let freeSpaceLabel = NSTextField(labelWithString: "")
+    private let usageLabel = NSTextField(labelWithString: "")
+    private let emptyCacheButton = NSButton(title: L.emptyCache, target: nil, action: nil)
     private let messageLabel = NSTextField(labelWithString: "")
     /// 一度でも開いたか。入力欄に今の値が入っているかの判断に使う
     private var hasShown = false
@@ -60,6 +62,12 @@ final class SettingsWindowController: NSWindowController {
 
         freeSpaceLabel.font = .systemFont(ofSize: 11)
         freeSpaceLabel.textColor = .secondaryLabelColor
+
+        usageLabel.font = .systemFont(ofSize: 11)
+        usageLabel.textColor = .secondaryLabelColor
+        emptyCacheButton.bezelStyle = .rounded
+        emptyCacheButton.target = self
+        emptyCacheButton.action = #selector(emptyCache)
         clientIDField.placeholderString = "…apps.googleusercontent.com"
 
         launchCheckbox.target = self
@@ -111,6 +119,7 @@ final class SettingsWindowController: NSWindowController {
             row(L.cacheMaxAge, periodPopUp),
             row(L.cacheMaxSize, limitPopUp),
             aligned(freeSpaceLabel),
+            cacheRow(),
             checkboxRow(finderSettingsCheckbox),
             hint(L.keepFinderSettingsHint),
             divider(),
@@ -169,6 +178,18 @@ final class SettingsWindowController: NSWindowController {
     /// チェックの行
     private func checkboxRow(_ checkbox: NSButton) -> NSView { aligned(checkbox) }
 
+    /// 「キャッシュを空にする」と、今どれだけ使っているか。
+    ///
+    /// 横に並べない。窓の幅は組み上がりから決めているので、あとから伸びる文字を
+    /// 同じ行に置くと、行ごと詰められて文字が出なくなる
+    private func cacheRow() -> NSView {
+        let stack = NSStackView(views: [emptyCacheButton, usageLabel])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+        return aligned(stack)
+    }
+
     func show() {
         // 開くたびに読み直す。設定画面の外（システム設定）で変えられることがあるため
         mountPointField.stringValue = Settings.mountPoint
@@ -181,6 +202,7 @@ final class SettingsWindowController: NSWindowController {
         periodPopUp.selectItem(at: CachePeriod.allCases.firstIndex(of: Settings.cachePeriod) ?? 0)
         limitPopUp.selectItem(at: CacheLimit.allCases.firstIndex(of: Settings.cacheLimit) ?? 0)
         showFreeSpace()
+        showUsage()
 
         let credentials = RcloneConfig.values(of: Settings.remote)
         clientIDField.stringValue = credentials["client_id"] ?? ""
@@ -255,6 +277,42 @@ final class SettingsWindowController: NSWindowController {
         guard CacheLimit.allCases.indices.contains(index) else { return }
         Settings.cacheLimit = CacheLimit.allCases[index]
         showFreeSpace()
+        showUsage()
+    }
+
+    /// キャッシュを空にする。押した本人に一度訊く。消えるのは手元のぶんだけだが、
+    /// 大きな Drive では取り直しに何時間もかかる
+    @objc private func emptyCache() {
+        let alert = NSAlert()
+        alert.messageText = L.cachePurgeTitle
+        alert.informativeText = L.cachePurgeBody
+        alert.addButton(withTitle: L.cachePurgeConfirm)
+        alert.addButton(withTitle: L.cancel)
+        alert.alertStyle = .warning
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        emptyCacheButton.isEnabled = false
+        MountController.shared.purgeCache { [weak self] failure in
+            guard let self else { return }
+            self.emptyCacheButton.isEnabled = true
+            self.report(failure.map { L.cachePurgeFailed($0) } ?? "")
+            self.showUsage()
+            self.showFreeSpace()
+        }
+    }
+
+    /// 今どれだけ使っているか。フォルダを歩くので裏で数え、出すときだけ主スレッドへ戻る
+    private func showUsage() {
+        usageLabel.stringValue = ""
+        let limit = Settings.cacheLimit
+        DispatchQueue.global(qos: .utility).async {
+            let used = Settings.cacheUsedBytes()
+            let usedText = ByteCountFormatter.string(fromByteCount: used, countStyle: .file)
+            let limitText = limit == .unlimited ? "" : limit.label
+            DispatchQueue.main.async {
+                self.usageLabel.stringValue = L.cacheUsage(usedText, limitText)
+            }
+        }
     }
 
     /// 上限の下に、置き場所の空きを出す。

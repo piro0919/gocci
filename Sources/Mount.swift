@@ -226,6 +226,8 @@ final class MountController {
         if options.keepsFinderSettings {
             task.arguments? += ["--noappledouble=false"]
         }
+        // 動いている rclone の中を訊く口。キャッシュの量と、上げ残しがあるかを知るため
+        task.arguments? += Rc.prepare()
 
         let errorPipe = Pipe()
         task.standardError = errorPipe
@@ -342,6 +344,57 @@ final class MountController {
                 self.mount()
             } else if waited > 30 {
                 timer.invalidate()
+            }
+        }
+    }
+
+    /// キャッシュを空にする。
+    ///
+    /// マウントしたまま外から消してはいけない。`--vfs-cache-mode full` では、まだ Drive へ
+    /// 上げ終えていない書き込みもキャッシュに載っている。rclone は SIGTERM を受けると
+    /// 書き戻してから終わるので、**先に外し、外れたのを見届けてから**消す。
+    /// 外れなかったときは消さずに戻す。消えて困るのは手元ではなく向こう側なので、
+    /// ここで諦めるほうが安い
+    func purgeCache(completion: @escaping (String?) -> Void) {
+        let directory = Settings.resolvedCacheDir
+        let wasMounted = state == .mounted
+
+        let erase: () -> Void = { [weak self] in
+            self?.queue.async {
+                var failure: String?
+                do {
+                    // フォルダごと消さずに中身だけ消す。置き場所が外付けの直下なので、
+                    // 消したあとに作り直せなかったときの戻りが無くなる
+                    let contents = try FileManager.default.contentsOfDirectory(atPath: directory)
+                    for name in contents {
+                        try FileManager.default.removeItem(
+                            atPath: (directory as NSString).appendingPathComponent(name))
+                    }
+                } catch {
+                    failure = error.localizedDescription
+                }
+
+                DispatchQueue.main.async {
+                    if wasMounted { self?.mount() }
+                    completion(failure)
+                }
+            }
+        }
+
+        guard wasMounted else { return erase() }
+
+        unmount()
+
+        var waited = 0.0
+        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+            guard let self else { return timer.invalidate() }
+            waited += 1
+            if self.state == .unmounted {
+                timer.invalidate()
+                erase()
+            } else if waited > 30 {
+                timer.invalidate()
+                completion(L.cachePurgeNeedsUnmount)
             }
         }
     }
@@ -465,6 +518,8 @@ final class MountController {
     /// rclone が終わった。こちらが止めたのか、勝手に落ちたのかを分ける
     private func processDidExit() {
         process = nil
+        // 落ちた相手の口を残すと、次の rclone の返事と取り違える
+        Rc.close()
 
         logLock.lock()
         let tail = log

@@ -30,6 +30,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var blinkTimer: Timer?
     private var blinkOn = true
 
+    /// 取りに行っている間だけ印の隣で回る輪
+    private let spinner = SpinnerView()
+    private var transferTimer: Timer?
+    private var isTransferring = false
+
     private var settingsWindow = SettingsWindowController()
     /// 画面を作り直すかの判断に使う。文字列は組み立て時に焼き込まれるため
     private var builtLanguage = Language.resolved
@@ -42,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.menu = menu
+        buildSpinner()
 
         NotificationCenter.default.addObserver(
             forName: .mountStateChanged, object: nil, queue: .main
@@ -72,6 +78,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 外付けを抜かれた、別のアプリに外された、といった変化はこちらに通知が来ない
         pollTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             self?.mount.refresh()
+        }
+
+        // 取りに行っているかを rclone に訊く。読み始めてから載るまで数秒かかるので、
+        // 見に行く間隔もそれに合わせて短くしすぎない
+        transferTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            self?.checkTransfers()
         }
 
         refresh()
@@ -190,7 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func refresh() {
         let state = mount.state
 
-        statusItem.button?.image = Icon.image(for: state)
+        statusItem.button?.image = Icon.image(for: state, reservingSpinner: isTransferring)
         statusItem.button?.toolTip = "Gocci — \(label(for: state))"
 
         // 通知はアドホック署名では出せない（実測）。人の手が要る失敗は、
@@ -214,6 +226,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             toggleItem.title = state == .mounting ? L.mounting : L.unmounting
             toggleItem.isEnabled = false
         }
+    }
+
+    /// 印の隣に輪を置く。項目は1つのままで、印の右に場所だけ空ける
+    private func buildSpinner() {
+        guard let button = statusItem.button else { return }
+
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isDisplayedWhenStopped = false
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        button.addSubview(spinner)
+
+        NSLayoutConstraint.activate([
+            spinner.widthAnchor.constraint(equalToConstant: Icon.spinnerSize),
+            spinner.heightAnchor.constraint(equalToConstant: Icon.spinnerSize),
+            spinner.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+            spinner.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -3),
+        ])
+    }
+
+    /// 取りに行っている間だけ輪を回す。
+    ///
+    /// 印そのものは変えない。状態（繋がっている・切れている）と、今取りに行っているかは
+    /// 別のことなので、同じ形に両方を持たせると読み取れなくなる
+    private func checkTransfers() {
+        guard mount.state == .mounted else { return showSpinner(false) }
+
+        Rc.transferring { [weak self] count in
+            DispatchQueue.main.async { self?.showSpinner(count > 0) }
+        }
+    }
+
+    private func showSpinner(_ shown: Bool) {
+        guard shown != isTransferring else { return }
+        isTransferring = shown
+
+        if shown {
+            spinner.startAnimation(nil)
+        } else {
+            spinner.stopAnimation(nil)
+        }
+        // 幅は絵が持つ。ここでは絵を差し替えるだけにする
+        refresh()
     }
 
     /// 失敗しているときだけ動く点滅。

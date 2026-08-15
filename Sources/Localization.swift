@@ -59,6 +59,27 @@ enum L {
             ? t("ダウンロード済み \(used)", "Downloaded \(used)")
             : t("ダウンロード済み \(used)／\(limit)", "Downloaded \(used) of \(limit)")
     }
+    static var cancel: String { t("やめる", "Cancel") }
+    static var emptyCache: String { t("キャッシュを空にする", "Empty the cache") }
+    static var cachePurgeTitle: String {
+        t("ダウンロード済みのものを全部消しますか？", "Delete everything downloaded so far?")
+    }
+    static var cachePurgeBody: String {
+        t(
+            "マウントをいったん外し、消してから繋ぎ直します。Google ドライブ側は消えません。"
+                + "次に開いたときは、また取り直しになります。",
+            "The disk is unmounted, the cache is deleted, and it is mounted again. Nothing is "
+                + "removed from Google Drive. Files are fetched again next time you open them.")
+    }
+    static var cachePurgeConfirm: String { t("消す", "Delete") }
+    static var cachePurgeNeedsUnmount: String {
+        t(
+            "マウントを外せなかったので、消していません",
+            "The disk could not be unmounted, so nothing was deleted")
+    }
+    static func cachePurgeFailed(_ reason: String) -> String {
+        t("消せませんでした: \(reason)", "Could not delete: \(reason)")
+    }
     static func cacheDiskFree(_ free: String) -> String {
         t("キャッシュの置き場所の空き \(free)", "\(free) free where the cache lives")
     }

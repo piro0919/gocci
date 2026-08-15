@@ -126,6 +126,28 @@ enum Settings {
         return values?.volumeAvailableCapacityForImportantUsage
     }
 
+    /// キャッシュが今どれだけ使っているか。
+    ///
+    /// rclone のキャッシュは穴あきファイルなので、ファイルの大きさではなく実際に取っている
+    /// 場所を足す。フォルダを歩くので、呼ぶ側は主スレッドの外で回す
+    static func cacheUsedBytes() -> Int64 {
+        let root = URL(fileURLWithPath: resolvedCacheDir)
+        guard
+            let walker = FileManager.default.enumerator(
+                at: root, includingPropertiesForKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey],
+                options: [.skipsHiddenFiles])
+        else { return 0 }
+
+        var total: Int64 = 0
+        for case let url as URL in walker {
+            let values = try? url.resourceValues(
+                forKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey])
+            guard values?.isRegularFile == true else { continue }
+            total += Int64(values?.totalFileAllocatedSize ?? 0)
+        }
+        return total
+    }
+
     /// 穴あきファイルを作れるか。
     ///
     /// rclone は読んだところだけを持つ穴あきファイルでキャッシュを作る。FAT や exFAT は
