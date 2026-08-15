@@ -120,6 +120,13 @@ enum FinderView {
     /// 歩いている最中か。掃引が二重に走ると、同じ `.DS_Store` を二人で書くことになる
     private static var sweeping = false
 
+    /// 中まで降りないフォルダ。
+    ///
+    /// 人が Finder で開く場所ではないのに、数だけが桁違いに多い。一つのリポジトリの
+    /// `node_modules` だけで待ち行列が数百に膨らみ、その間ほかのフォルダが手つかずになる。
+    /// フォルダ自身の設定は親の `.DS_Store` に入るので、開いてもプレビューは出ない
+    private static let doNotEnter: Set<String> = ["node_modules"]
+
     /// 待ち行列を歩いて、プレビューを切って回る。
     ///
     /// `.DS_Store` の書き込みは Drive へ上がる。設定を入れた人が承知の上で頼んだ動きなので
@@ -162,10 +169,12 @@ enum FinderView {
                 if apply(to: children, in: directory) { touched += 1 }
             }
 
-            // 書き出すのは apply の後。ここで落ちても、やり直すのは今のフォルダ1つぶん
-            queue.append(contentsOf: children.map {
-                (directory as NSString).appendingPathComponent($0)
-            })
+            // 書き出すのは apply の後。ここで落ちても、やり直すのは今のフォルダ1つぶん。
+            // 中まで降りないものは積まない。名前は親の `.DS_Store` に既に入れてある
+            queue.append(
+                contentsOf: children
+                    .filter { !doNotEnter.contains($0) }
+                    .map { (directory as NSString).appendingPathComponent($0) })
             savePending(queue, mountPoint: mountPoint)
         }
 
