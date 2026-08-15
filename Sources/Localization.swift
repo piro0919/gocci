@@ -46,8 +46,10 @@ enum L {
     static var failed: String { t("エラー", "Error") }
     static var mountPointUnset: String { t("マウント先が未設定です", "No mount point set") }
     static var openInFinder: String { t("Finderに表示", "Show in Finder") }
-    static var connect: String { t("マウント", "Mount") }
-    static var disconnect: String { t("マウント解除", "Unmount") }
+    // 押すと何が起きるかを、行そのものに書く。「マウント」だけだと、状態の表示なのか
+    // 押すためのものなのか読み取れない。英語は動詞のままで足りる
+    static var connect: String { t("マウントする", "Mount") }
+    static var disconnect: String { t("マウントを解除する", "Unmount") }
     static func fetching(_ count: Int) -> String {
         t("\(count)項目をダウンロード中", "Downloading \(count) items")
     }
