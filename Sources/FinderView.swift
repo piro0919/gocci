@@ -45,6 +45,16 @@ enum FinderView {
             .appendingPathComponent("browsing.txt")
     }
 
+    /// 拡張が最後に報せてきた「開いているフォルダ」。
+    ///
+    /// マウントを外すと、そこを見ていた Finder のウィンドウは黙って閉じる。閉じる前に
+    /// どこを見ていたかを控えておき、繋ぎ直したあとで開き直すために使う
+    static func browsedPath() -> String? {
+        guard let data = try? Data(contentsOf: browsingURL) else { return nil }
+        let path = String(decoding: data, as: UTF8.self)
+        return path.isEmpty ? nil : path
+    }
+
     private static var lastBrowsed = ""
     private static var lastCoveredAt = Date.distantPast
     /// 同じフォルダを見続けている間に見直す間隔。ここで新しく作られたフォルダを拾う

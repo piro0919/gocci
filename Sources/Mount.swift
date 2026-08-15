@@ -1,3 +1,4 @@
+import AppKit
 import Darwin
 import Foundation
 import OSLog
@@ -358,6 +359,8 @@ final class MountController {
     func purgeCache(completion: @escaping (String?) -> Void) {
         let directory = Settings.resolvedCacheDir
         let wasMounted = state == .mounted
+        // 外すと、そこを見ていた Finder のウィンドウは黙って閉じる。控えておいて開き直す
+        let watched = wasMounted ? browsedPathInsideMount() : nil
 
         let erase: () -> Void = { [weak self] in
             self?.queue.async {
@@ -375,7 +378,10 @@ final class MountController {
                 }
 
                 DispatchQueue.main.async {
-                    if wasMounted { self?.mount() }
+                    if wasMounted {
+                        self?.mount()
+                        if let watched { self?.reopenInFinder(watched) }
+                    }
                     completion(failure)
                 }
             }
@@ -395,6 +401,33 @@ final class MountController {
             } else if waited > 30 {
                 timer.invalidate()
                 completion(L.cachePurgeNeedsUnmount)
+            }
+        }
+    }
+
+    /// 拡張が報せてきた「見ているフォルダ」のうち、マウントの中にあるものだけ返す
+    private func browsedPathInsideMount() -> String? {
+        let mountPoint = (Settings.mountPoint as NSString).standardizingPath
+        guard !mountPoint.isEmpty, let path = FinderView.browsedPath() else { return nil }
+        return path == mountPoint || path.hasPrefix(mountPoint + "/") ? path : nil
+    }
+
+    /// 繋ぎ直したあとで開き直す。
+    ///
+    /// 繋がる前に開くと、まだ無い場所を掴んで Finder が「見つかりません」を出す。
+    /// マウント表に載るのを待ってから開く。載らなければ何もしない——勝手に窓を出すより、
+    /// 出ないほうが害が小さい
+    private func reopenInFinder(_ path: String) {
+        var waited = 0.0
+        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+            guard let self else { return timer.invalidate() }
+            waited += 1
+
+            if self.state == .mounted, FileManager.default.fileExists(atPath: path) {
+                timer.invalidate()
+                NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            } else if waited > 40 {
+                timer.invalidate()
             }
         }
     }
