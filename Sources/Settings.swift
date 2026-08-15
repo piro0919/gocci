@@ -126,6 +126,17 @@ enum Settings {
         return values?.volumeAvailableCapacityForImportantUsage
     }
 
+    /// 大きさを字にする。
+    ///
+    /// `ByteCountFormatter` は既定では 0 を「Zero KB」と書く。数の並びの中に字が混ざると
+    /// 読み手が引っかかるので、数字で出させる
+    static func byteText(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        formatter.allowsNonnumericFormatting = false
+        return formatter.string(fromByteCount: bytes)
+    }
+
     /// キャッシュが今どれだけ使っているか。
     ///
     /// rclone のキャッシュは穴あきファイルなので、ファイルの大きさではなく実際に取っている

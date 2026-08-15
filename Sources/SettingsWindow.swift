@@ -307,7 +307,7 @@ final class SettingsWindowController: NSWindowController {
         let limit = Settings.cacheLimit
         DispatchQueue.global(qos: .utility).async {
             let used = Settings.cacheUsedBytes()
-            let usedText = ByteCountFormatter.string(fromByteCount: used, countStyle: .file)
+            let usedText = Settings.byteText(used)
             let limitText = limit == .unlimited ? "" : limit.label
             DispatchQueue.main.async {
                 self.usageLabel.stringValue = L.cacheUsage(usedText, limitText)
@@ -327,7 +327,7 @@ final class SettingsWindowController: NSWindowController {
             return
         }
 
-        let text = ByteCountFormatter.string(fromByteCount: free, countStyle: .file)
+        let text = Settings.byteText(free)
         let limit = Settings.cacheLimit.bytes
         freeSpaceLabel.stringValue =
             (limit.map { $0 > free } ?? false)
