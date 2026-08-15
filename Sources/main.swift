@@ -40,6 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var builtLanguage = Language.resolved
     private var pollTimer: Timer?
 
+    /// 繋がった瞬間を拾うために、前の状態を控えておく
+    private var lastState: MountState?
+
     private var mount: MountController { MountController.shared }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -201,6 +204,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refresh() {
         let state = mount.state
+
+        // 繋がったところで、前回の歩き残しを片付けにいく。一周に何時間もかかるので、
+        // 終わる前に切れるのが普通。控えが無ければ何も起きない
+        if state == .mounted, lastState != .mounted {
+            FinderView.resumeSweep(Settings.mountPoint)
+        }
+        lastState = state
 
         statusItem.button?.image = Icon.image(for: state, reservingSpinner: isTransferring)
         statusItem.button?.toolTip = "Gocci — \(label(for: state))"

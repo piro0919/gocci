@@ -32,7 +32,24 @@ enum FinderView {
 
         queue.async {
             guard FileManager.default.fileExists(atPath: mountPoint) else { return }
-            hideIconPreviews(under: mountPoint)
+            run(pending: [mountPoint], mountPoint: mountPoint)
+        }
+    }
+
+    /// 前回の続きから歩く。歩き残しが無ければ何もしない。
+    ///
+    /// 一周に何時間もかかるので、終わる前の中断がむしろ普通に起きる——アプリの終了、
+    /// 外付けを抜く、スリープ。根から歩き直していると、いつまでも終わらない
+    static func resumeSweep(_ mountPoint: String) {
+        guard Settings.keepsFinderSettings, !mountPoint.isEmpty else { return }
+
+        queue.async {
+            guard FileManager.default.fileExists(atPath: mountPoint),
+                let pending = loadPending(for: mountPoint), !pending.isEmpty
+            else { return }
+
+            viewLogger.info("歩き残しから続ける: 残り \(pending.count) フォルダ")
+            run(pending: pending, mountPoint: mountPoint)
         }
     }
 
@@ -99,29 +116,88 @@ enum FinderView {
         viewLogger.info("開いたフォルダの一段先を覆った: \(path, privacy: .public)")
     }
 
-    /// マウント先の下を歩いて、プレビューを切って回る。
+    /// 歩いている最中か。掃引が二重に走ると、同じ `.DS_Store` を二人で書くことになる
+    private static var sweeping = false
+
+    /// 待ち行列を歩いて、プレビューを切って回る。
     ///
-    /// 書き込みは Drive へ上がる。設定を入れた人が承知の上で頼んだ動きなので黙ってやるが、
-    /// どれだけ触ったかは記録に残す
-    @discardableResult
-    static func hideIconPreviews(under root: String) -> (touched: Int, folders: Int) {
+    /// `.DS_Store` の書き込みは Drive へ上がる。設定を入れた人が承知の上で頼んだ動きなので
+    /// 黙ってやるが、どれだけ触ったかは記録に残す。
+    ///
+    /// 1フォルダ片付けるごとに、残りを控えに書き出す。控えの置き場は手元のディスクで、
+    /// 1フォルダの一覧取りに数秒かかるのに対して書き込みは桁が違う。歩きの速さには響かない
+    private static func run(pending: [String], mountPoint: String) {
+        guard !sweeping else { return }
+        sweeping = true
+        defer { sweeping = false }
+
+        var queue = pending
         var touched = 0
         var folders = 0
 
-        var queue = [root]
         while let directory = queue.popLast() {
+            // 設定を切られた、外付けを抜かれた。その場でやめて、残りは控えに残す
+            guard Settings.keepsFinderSettings,
+                FileManager.default.fileExists(atPath: mountPoint)
+            else {
+                savePending(queue + [directory], mountPoint: mountPoint)
+                viewLogger.info("途中で止めた: 残り \(queue.count + 1) フォルダ")
+                return
+            }
+
             let children = subdirectories(of: directory)
+            if !children.isEmpty {
+                folders += children.count
+                if apply(to: children, in: directory) { touched += 1 }
+            }
+
+            // 書き出すのは apply の後。ここで落ちても、やり直すのは今のフォルダ1つぶん
             queue.append(contentsOf: children.map {
                 (directory as NSString).appendingPathComponent($0)
             })
-            guard !children.isEmpty else { continue }
-            folders += children.count
-
-            if apply(to: children, in: directory) { touched += 1 }
+            savePending(queue, mountPoint: mountPoint)
         }
 
-        viewLogger.info("プレビューを切った: \(touched) ファイル / \(folders) フォルダ")
-        return (touched, folders)
+        clearPending()
+        viewLogger.info("歩き終えた: \(touched) ファイル / \(folders) フォルダ")
+    }
+
+    // MARK: - 歩き残しの控え
+
+    /// 控えの置き場。Drive 側には置かない。歩いている最中に Drive へ書き続けることになる
+    private static var pendingURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Gocci", isDirectory: true)
+            .appendingPathComponent("sweep.txt")
+    }
+
+    /// 1行目にマウント先、以降は歩き残したフォルダ。
+    ///
+    /// マウント先を控えておくのは、繋ぎ先を変えた人の残りを持ち越さないため
+    private static func savePending(_ queue: [String], mountPoint: String) {
+        let directory = pendingURL.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true)
+
+        let text = ([mountPoint] + queue).joined(separator: "\n")
+        try? Data(text.utf8).write(to: pendingURL, options: .atomic)
+    }
+
+    private static func loadPending(for mountPoint: String) -> [String]? {
+        guard let data = try? Data(contentsOf: pendingURL) else { return nil }
+
+        var lines = String(decoding: data, as: UTF8.self).components(separatedBy: "\n")
+        guard let recorded = lines.first, recorded == mountPoint else {
+            // 繋ぎ先が変わっている。前の残りは捨てる
+            clearPending()
+            return nil
+        }
+        lines.removeFirst()
+        return lines.filter { !$0.isEmpty }
+    }
+
+    private static func clearPending() {
+        try? FileManager.default.removeItem(at: pendingURL)
     }
 
     /// 一つのフォルダの `.DS_Store` を書き直す。書いたら true
