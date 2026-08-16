@@ -15,6 +15,8 @@ final class SettingsWindowController: NSWindowController {
     private let volumeLabel = NSTextField(labelWithString: "")
     private let languagePopUp = NSPopUpButton()
     private let messageLabel = NSTextField(labelWithString: "")
+    /// 文字が無いときは行ごと畳む。中身だけ隠しても、包んでいる行が場所を取り続ける
+    private lazy var messageRow: NSView = aligned(messageLabel)
     /// 一度でも開いたか。入力欄に今の値が入っているかの判断に使う
     private var hasShown = false
 
@@ -59,6 +61,7 @@ final class SettingsWindowController: NSWindowController {
         messageLabel.font = .systemFont(ofSize: 11)
         // 文字が無いときは畳む。空のまま置くと、その行のぶんだけ間延びする
         messageLabel.isHidden = true
+        messageRow.isHidden = true
 
         evictButton.bezelStyle = .rounded
         evictButton.target = self
@@ -100,7 +103,7 @@ final class SettingsWindowController: NSWindowController {
             divider(),
             row(L.language, languagePopUp),
             checkboxRow(launchCheckbox),
-            aligned(messageLabel),
+            messageRow,
             buttons,
             aligned(about),
         ])
@@ -353,6 +356,7 @@ final class SettingsWindowController: NSWindowController {
         messageLabel.textColor = failed ? .systemRed : .secondaryLabelColor
         messageLabel.stringValue = text
         messageLabel.isHidden = text.isEmpty
+        messageRow.isHidden = text.isEmpty
     }
 }
 

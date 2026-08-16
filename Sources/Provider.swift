@@ -174,6 +174,8 @@ final class Provider {
                 providerLogger.info(
                     "今の繋ぎをそのまま使う: \(keep.identifier.rawValue, privacy: .public) / 切れている: \(keep.isDisconnected)")
                 Task { @MainActor in
+                    // 作り直さない道でも、繋がったことにしないと「接続中…」のまま残る
+                    self.state = .on
                     self.visibleURL { url in
                         providerLogger.info(
                             "見える場所: \(url?.path ?? "分からない", privacy: .public)")
