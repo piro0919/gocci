@@ -480,7 +480,8 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
 
     required init(domain: NSFileProviderDomain) {
         super.init()
-        logger.info("拡張が起きた")
+        Self.myDomain = domain
+        logger.info("拡張が起きた: \(domain.identifier.rawValue, privacy: .public)")
     }
 
     func invalidate() {}
@@ -605,6 +606,18 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
             || itemTemplate.itemIdentifier == .trashContainer
             || itemTemplate.filename == ".Trash"
         {
+            completionHandler(itemTemplate, [], false, nil)
+            return progress
+        }
+
+        // 外付けに置くと、macOS はドメインの入れ物そのもの（`Gocci-Gocci`）を
+        // 「ディスクにあって Drive に無いもの」と見なし、根の下へ作ろうとする。
+        // 断ると `-2011` を出し続けて列挙まで進まないので、受けたことにして Drive には作らない
+        // （2026-08-17 実測）
+        if itemTemplate.parentItemIdentifier == .rootContainer,
+            itemTemplate.filename.hasPrefix("Gocci-")
+        {
+            logger.info("入れ物そのものは作らない: \(itemTemplate.filename, privacy: .public)")
             completionHandler(itemTemplate, [], false, nil)
             return progress
         }
@@ -918,7 +931,10 @@ extension GocciFileProvider: NSFileProviderPartialContentFetching {
     private static func place(
         _ data: Data, at offset: Int, of item: Item, identifier: NSFileProviderItemIdentifier
     ) -> URL? {
-        let directory = FileManager.default.temporaryDirectory
+        // 渡すファイルは、人から見える場所と同じボリュームに置く決まり
+        // （`NSFileProviderReplicatedExtension.h` 1240行）。手元の一時置き場に作ると、
+        // 外付けに置いたときに別のボリュームになり、受け取ってもらえない（2026-08-17 実測）
+        let directory = scratchDirectory()
             .appendingPathComponent("part-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
@@ -997,6 +1013,20 @@ extension GocciFileProvider: NSFileProviderThumbnailing {
 
         group.notify(queue: .global()) { completionHandler(nil) }
         return progress
+    }
+
+    /// 渡すものを一時的に置く場所。macOS が指すところを使う
+    /// 自分がどの繋ぎとして起こされたか。外付けだと識別子が毎回変わるので、
+    /// 決め打ちでは自分を見つけられない
+    nonisolated(unsafe) static var myDomain: NSFileProviderDomain?
+
+    static func scratchDirectory() -> URL {
+        if let domain = myDomain, let manager = NSFileProviderManager(for: domain),
+            let url = try? manager.temporaryDirectoryURL()
+        {
+            return url
+        }
+        return FileManager.default.temporaryDirectory
     }
 
     /// 絵を縮める。元の絵は開かずに、ImageIO に縮小だけ頼む

@@ -213,6 +213,11 @@ final class Provider {
         let volume = Settings.volume
         guard !volume.isEmpty, #available(macOS 15.0, *) else { return completion() }
 
+        let url = URL(fileURLWithPath: volume)
+        let values = try? url.resourceValues(forKeys: [.volumeURLKey, .volumeNameKey, .isVolumeKey])
+        providerLogger.info(
+            "渡す先: \(url.path, privacy: .public) / ボリュームか \(values?.isVolume ?? false) / ボリューム名 \(values?.volumeName ?? "不明", privacy: .public)")
+
         let domain = NSFileProviderDomain(
             displayName: "Gocci", userInfo: ["owner": Self.mark],
             volumeURL: URL(fileURLWithPath: volume))
@@ -253,6 +258,21 @@ final class Provider {
         }
     }
 
+    /// 調査用。macOS が覚えている繋ぎを並べる
+    func listDomains(completion: @escaping () -> Void) {
+        NSFileProviderManager.getDomainsWithCompletionHandler { domains, error in
+            if let error {
+                providerLogger.error("並べられない: \(error.localizedDescription, privacy: .public)")
+            }
+            for domain in domains {
+                providerLogger.info(
+                    "繋ぎ: \(domain.identifier.rawValue, privacy: .public) / 名前 \(domain.displayName, privacy: .public) / 切れている \(domain.isDisconnected)")
+            }
+            providerLogger.info("繋ぎは全部で \(domains.count) 件")
+            Task { @MainActor in completion() }
+        }
+    }
+
     private func createDomain(retriesLeft: Int = 20, then next: @escaping () -> Void) {
         let volume = Settings.volume
         let domain: NSFileProviderDomain
@@ -275,6 +295,8 @@ final class Provider {
                     let ns = error as NSError
                     // 後片付けが終わっていないだけなら、待てば通る
                     if ns.code == 513, retriesLeft > 0 {
+                        // 残骸が残っている限り断られ続ける。待つ前に片付ける
+                        Self.clearExternalLeftovers()
                         providerLogger.info("まだ作れないので待つ（残り \(retriesLeft) 回）")
                         DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
                             Task { @MainActor in
