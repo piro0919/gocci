@@ -10,13 +10,13 @@ export function LanguageSwitch() {
   const pathname = usePathname();
 
   return (
-    <div className="flex items-center gap-1 rounded-full border border-white/40 p-1 text-sm">
+    <div className="flex items-center gap-1 rounded-full border border-line bg-surface/60 p-1 text-sm">
       {(["en", "ja"] as const).map((target) => (
         <Link
-          className={`rounded-full px-3 py-1 font-bold transition ${
+          className={`cursor-pointer rounded-full px-3 py-1 font-bold transition ${
             locale === target
-              ? "bg-white text-[var(--color-navy-deep)]"
-              : "text-white/70 hover:text-white"
+              ? "bg-teal text-ink"
+              : "text-muted hover:text-text"
           }`}
           href={pathname}
           key={target}

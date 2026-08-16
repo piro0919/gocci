@@ -17,18 +17,22 @@ function Section({
   id,
   title,
   lead,
+  tone = "plain",
 }: {
   children: ReactNode;
   id?: string;
   lead?: string;
   title: string;
+  tone?: "panel" | "plain";
 }) {
   return (
-    <section className="px-6 py-20" id={id}>
+    <section className={`${tone === "panel" ? "panel" : ""} px-6 py-24`} id={id}>
       <div className="mx-auto max-w-5xl">
         <h2 className="font-bold text-3xl tracking-tight sm:text-4xl">{title}</h2>
-        {lead ? <p className="mt-4 max-w-2xl text-lg text-ink/70 leading-relaxed">{lead}</p> : null}
-        <div className="mt-10">{children}</div>
+        {lead ? (
+          <p className="mt-4 max-w-2xl text-lg text-muted leading-relaxed">{lead}</p>
+        ) : null}
+        <div className="mt-12">{children}</div>
       </div>
     </section>
   );
@@ -46,43 +50,45 @@ export default async function Page({ params }: PageProps) {
 
   return (
     <>
-      {/* 見出し。アイコンと同じグラデーションを敷いて、名前と絵を結び付ける */}
-      <header className="brand px-6 pt-8 pb-24 text-white">
+      {/* 見出し。帯で塗らず、奥に光を置く。アイコンは絵として大きく扱う */}
+      <header className="aurora relative overflow-hidden px-6 pt-8 pb-28">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <span className="font-bold text-lg tracking-tight">Gocci</span>
           <LanguageSwitch />
         </div>
 
-        <div className="mx-auto mt-16 flex max-w-5xl flex-col items-center gap-12 lg:flex-row lg:items-center">
+        <div className="mx-auto mt-20 flex max-w-5xl flex-col items-center gap-14 lg:flex-row">
           <div className="flex-1 text-center lg:text-left">
-            <span className="inline-block rounded-full border border-white/40 px-3 py-1 text-sm">
+            <span className="inline-block rounded-full border border-line bg-surface/60 px-3 py-1 text-muted text-sm">
               {t("hero.badge")}
             </span>
-            <h1 className="mt-6 font-bold text-4xl leading-tight tracking-tight sm:text-5xl">
+            <h1 className="mt-7 whitespace-pre-line font-bold text-4xl leading-[1.15] tracking-tight sm:text-6xl">
               {t("hero.title")}
             </h1>
-            <p className="mt-5 text-lg text-white/85 leading-relaxed">{t("hero.tagline")}</p>
+            <p className="mt-6 max-w-xl text-lg text-muted leading-relaxed">
+              {t("hero.tagline")}
+            </p>
 
-            <div className="mt-9 flex flex-wrap items-center justify-center gap-4 lg:justify-start">
+            <div className="mt-10 flex flex-wrap items-center justify-center gap-4 lg:justify-start">
               <a
-                className="rounded-full bg-white px-8 py-3.5 font-bold text-navy-deep transition hover:bg-white/90"
+                className="lift cursor-pointer rounded-full bg-teal px-8 py-3.5 font-bold text-ink hover:bg-teal/90"
                 href={DOWNLOAD}
               >
                 {t("hero.download")}
               </a>
               <a
-                className="rounded-full border border-white/50 px-8 py-3.5 font-bold transition hover:bg-white/10"
+                className="lift cursor-pointer rounded-full border border-line px-8 py-3.5 font-bold hover:bg-surface"
                 href={REPO}
               >
                 {t("hero.source")}
               </a>
             </div>
-            <p className="mt-4 text-sm text-white/60">{t("hero.note")}</p>
+            <p className="mt-5 text-muted text-sm">{t("hero.note")}</p>
           </div>
 
           <Image
             alt="Gocci"
-            className="w-40 rounded-[22%] shadow-2xl sm:w-56"
+            className="w-44 rounded-[22%] shadow-[0_30px_80px_-20px_rgba(41,199,192,0.45)] sm:w-60"
             height={512}
             priority={true}
             src="/icon.png"
@@ -92,89 +98,87 @@ export default async function Page({ params }: PageProps) {
       </header>
 
       {/* なぜ作ったか。既にある道具で駄目だった理由を並べる */}
-      <div className="grid-bg">
-        <Section lead={t("problem.lead")} title={t("problem.title")}>
-          <div className="grid gap-5 sm:grid-cols-3">
-            {problems.map((item) => (
-              <div className="rounded-2xl border border-line bg-white p-6" key={item.title}>
-                <h3 className="font-bold text-lg">{item.title}</h3>
-                <p className="mt-3 text-ink/70 leading-relaxed">{item.body}</p>
-              </div>
-            ))}
-          </div>
-        </Section>
-      </div>
-
-      <Section title={t("features.title")}>
-        <div className="grid gap-5 sm:grid-cols-2">
-          {features.map((item) => (
-            <div className="rounded-2xl border border-line bg-white p-7" key={item.title}>
-              <h3 className="font-bold text-xl">{item.title}</h3>
-              <p className="mt-3 text-ink/70 leading-relaxed">{item.body}</p>
+      <Section lead={t("problem.lead")} title={t("problem.title")} tone="panel">
+        <div className="grid gap-5 sm:grid-cols-3">
+          {problems.map((item) => (
+            <div className="card card-glow lift rounded-2xl p-6" key={item.title}>
+              <h3 className="font-bold text-lg">{item.title}</h3>
+              <p className="mt-3 text-muted leading-relaxed">{item.body}</p>
             </div>
           ))}
         </div>
       </Section>
 
-      {/* 実際の画面。メニューと設定の2枚だけ。窓の影は画像が持っている */}
-      <div className="grid-bg">
-        <Section lead={t("screens.lead")} title={t("screens.title")}>
-          <div className="grid items-start gap-8 sm:grid-cols-2">
-            <figure>
-              <Image
-                alt={t("screens.menu")}
-                className="w-full max-w-sm rounded-xl border border-line shadow-lg"
-                height={304}
-                src="/shot-menu.png"
-                width={560}
-              />
-              <figcaption className="mt-3 text-ink/60 text-sm">{t("screens.menu")}</figcaption>
-            </figure>
-            <figure>
-              <Image
-                alt={t("screens.settings")}
-                className="w-full max-w-sm rounded-xl border border-line shadow-lg"
-                height={617}
-                src="/shot-settings.png"
-                width={679}
-              />
-              <figcaption className="mt-3 text-ink/60 text-sm">{t("screens.settings")}</figcaption>
-            </figure>
-          </div>
-        </Section>
-      </div>
+      {/* できること。数が多いので3列に落とし、1枚あたりを小さくする */}
+      <Section title={t("features.title")}>
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {features.map((item) => (
+            <div className="card card-glow lift rounded-2xl p-6" key={item.title}>
+              <h3 className="font-bold text-lg leading-snug">{item.title}</h3>
+              <p className="mt-3 text-muted text-sm leading-relaxed">{item.body}</p>
+            </div>
+          ))}
+        </div>
+      </Section>
 
-      {/* 仕組み。隠さずに書く。NFS で動くことは利点でもあり、制約でもある */}
-      <div className="brand text-white">
-        <Section title={t("how.title")}>
-          <p className="max-w-3xl text-lg text-white/85 leading-relaxed">{t("how.body")}</p>
-          <ul className="mt-8 space-y-3">
-            {points.map((point) => (
-              <li className="flex gap-3 text-white/85" key={point}>
-                <span aria-hidden="true">—</span>
-                <span>{point}</span>
-              </li>
-            ))}
-          </ul>
-        </Section>
-      </div>
+      {/* 実際の画面。メニューと設定の2枚だけ */}
+      <Section lead={t("screens.lead")} title={t("screens.title")} tone="panel">
+        <div className="grid items-start gap-10 sm:grid-cols-5">
+          {/* 設定は情報が多いので広く取る。メニューは実寸のまま置いて滲ませない */}
+          <figure className="sm:col-span-3">
+            <Image
+              alt={t("screens.settings")}
+              className="w-full rounded-xl border border-line shadow-2xl"
+              height={870}
+              src="/shot-settings.png"
+              width={1252}
+            />
+            <figcaption className="mt-4 text-muted text-sm">{t("screens.settings")}</figcaption>
+          </figure>
+          <figure className="sm:col-span-2">
+            <Image
+              alt={t("screens.menu")}
+              className="w-full max-w-64.5 rounded-xl border border-line shadow-2xl"
+              height={152}
+              src="/shot-menu.png"
+              width={258}
+            />
+            <figcaption className="mt-4 text-muted text-sm">{t("screens.menu")}</figcaption>
+          </figure>
+        </div>
+      </Section>
 
-      <Section title={t("install.title")}>
+      {/* 仕組み。隠さずに書く */}
+      <Section title={t("how.title")}>
+        <p className="max-w-3xl text-lg text-muted leading-relaxed">{t("how.body")}</p>
+        <ul className="mt-10 space-y-4">
+          {points.map((point) => (
+            <li className="flex gap-4 text-muted" key={point}>
+              <span aria-hidden="true" className="text-teal">
+                —
+              </span>
+              <span>{point}</span>
+            </li>
+          ))}
+        </ul>
+      </Section>
+
+      <Section title={t("install.title")} tone="panel">
         <ol className="grid gap-5 sm:grid-cols-3">
           {steps.map((step, index) => (
-            <li className="rounded-2xl border border-line bg-white p-6" key={step.title}>
-              <span className="font-bold text-teal-deep text-sm">
+            <li className="card card-glow rounded-2xl p-6" key={step.title}>
+              <span className="font-bold text-sm text-teal">
                 {String(index + 1).padStart(2, "0")}
               </span>
               <h3 className="mt-2 font-bold text-lg">{step.title}</h3>
-              <p className="mt-3 text-ink/70 leading-relaxed">{step.body}</p>
+              <p className="mt-3 text-muted leading-relaxed">{step.body}</p>
             </li>
           ))}
         </ol>
 
-        <div className="mt-10">
+        <div className="mt-12">
           <a
-            className="inline-block rounded-full bg-navy px-8 py-3.5 font-bold text-white transition hover:bg-navy-deep"
+            className="lift inline-block cursor-pointer rounded-full bg-teal px-8 py-3.5 font-bold text-ink hover:bg-teal/90"
             href={DOWNLOAD}
           >
             {t("hero.download")}
@@ -182,10 +186,10 @@ export default async function Page({ params }: PageProps) {
         </div>
       </Section>
 
-      <footer className="border-line border-t px-6 py-10">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 text-ink/60 text-sm">
+      <footer className="border-line border-t px-6 py-12">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 text-muted text-sm">
           <span>{t("footer.built")}</span>
-          <a className="font-bold hover:text-ink" href={REPO}>
+          <a className="cursor-pointer font-bold hover:text-text" href={REPO}>
             {t("footer.source")}
           </a>
         </div>

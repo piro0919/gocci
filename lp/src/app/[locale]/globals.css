@@ -6,9 +6,13 @@
   --color-teal-deep: #17a3a6;
   --color-navy: #17559f;
   --color-navy-deep: #0b2f5e;
-  --color-ink: #0d1b2a;
-  --color-paper: #f4f7fa;
-  --color-line: #dde5ee;
+
+  /* 地は藍を落としたところまで暗くする。道具の画面と地続きに見せたい */
+  --color-ink: #05101f;
+  --color-surface: #0b1a2d;
+  --color-line: #17304d;
+  --color-text: #e8f1f8;
+  --color-muted: #8ba7c0;
 }
 
 html {
@@ -16,19 +20,64 @@ html {
 }
 
 body {
-  background: var(--color-paper);
-  color: var(--color-ink);
+  background: var(--color-ink);
+  color: var(--color-text);
 }
 
-/* 見出しの帯。アイコンと同じ向きのグラデーション */
-.brand {
-  background: linear-gradient(135deg, var(--color-teal) 0%, var(--color-navy-deep) 100%);
+/* 見出しの奥に置く光。上端の青緑から沈む。帯で塗り分けるより、
+   一枚の空間の中で明るさが変わるほうがアイコンの見え方に近い */
+.aurora {
+  background:
+    radial-gradient(120% 80% at 50% -20%, rgba(41, 199, 192, 0.28) 0%, transparent 60%),
+    radial-gradient(90% 60% at 80% 10%, rgba(23, 85, 159, 0.35) 0%, transparent 55%);
 }
 
-/* 背景に薄く敷く方眼。ディスクの話をする面なので、丸ではなく格子にする */
-.grid-bg {
-  background-image:
-    linear-gradient(var(--color-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--color-line) 1px, transparent 1px);
-  background-size: 28px 28px;
+/* 面の区切り。線は引かず、明るさの差だけで分ける */
+.panel {
+  background: linear-gradient(180deg, rgba(23, 48, 77, 0.35) 0%, rgba(11, 26, 45, 0) 100%);
+}
+
+/* 箱。白で塗らず、地より少しだけ明るくする */
+.card {
+  background: linear-gradient(180deg, rgba(23, 48, 77, 0.45) 0%, rgba(11, 26, 45, 0.65) 100%);
+  border: 1px solid var(--color-line);
+}
+
+.card-glow {
+  position: relative;
+}
+
+/* 上辺だけ光らせる。境目をはっきりさせずに、面の手前側を示す */
+.card-glow::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(41, 199, 192, 0.5), transparent);
+}
+
+/* 押せるものは動く。150〜300ms に収める */
+.lift {
+  transition:
+    transform 200ms ease-out,
+    border-color 200ms ease-out;
+}
+
+.lift:hover {
+  transform: translateY(-2px);
+  border-color: rgba(41, 199, 192, 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .lift {
+    transition: none;
+  }
+
+  .lift:hover {
+    transform: none;
+  }
 }
