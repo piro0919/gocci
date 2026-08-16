@@ -670,6 +670,24 @@ GocciFileProvider: 渡した: Brand New Day.mp3
 fileproviderd:     Download root <private> failed with error: POSIX 2
 ```
 
+**さらに、そこへ書けるのは拡張だけ。** 渡し先を `temporaryDirectoryURL()` にしただけでは
+まだ通らない。丸ごと落とすのに `operations/copyfile` を使うと、書きに行くのは rclone、
+つまり別のプロセスになる。`.CloudStorage` の下は macOS が守っていて、`ls -lde` では
+755 のただのフォルダに見えるのに `operation not permitted` で弾かれる。
+いったん外へ落としてから移す手も駄目で、今度は移すところで断られた。
+**丸ごと落とす道も、拡張が自分で `serve` の口から流し込んで書く**（どちらも 2026-08-17 実測）。
+
+```text
+rclone:            Failed to copy: open …/.CloudStorage/System/…/tmp/…/x.mp3.partial:
+                     operation not permitted
+GocciFileProvider: 渡す場所へ移せなかった: “…”へのアクセス権がないため
+```
+
+確かめるときは Finder の右クリックの「今すぐダウンロード」を押す。読むだけだと
+`fetchPartialContents` の側しか通らず、丸ごとの道は試されない。
+なお失敗が残っていると Finder に「デバイスはサーバに接続できませんでした」の板が出たまま
+になり、以降の操作が `-15260 Finder はビジー状態です` で通らなくなる。先に閉じる。
+
 **5. 途中を渡すときは、頼まれた分より多く取っておく。**
 macOS が訊いてくるのは 16KB ずつで、一度取るたびに間を置かれる。頼まれた分ちょうどを
 返すと 9MB のファイルに18分かかった。8MB ずつ先を取るようにして3秒になった

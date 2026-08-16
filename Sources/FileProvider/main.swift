@@ -568,20 +568,30 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
             return progress
         }
 
-        // 途中だけ渡す道と同じで、渡すファイルは見える場所と同じボリュームに置く。
-        // 手元の一時置き場に作ると、外付けのときに別のボリュームになり、
-        // 渡した直後に `POSIX 2` で断られる（2026-08-17 実測）
-        let destination = Self.scratchDirectory()
+        // 渡すファイルは、見える場所と同じボリュームの、拡張が自分で作ったものであること。
+        // 手元の一時置き場に作ると外付けのとき別のボリュームになって `POSIX 2` で断られ、
+        // rclone に書かせると `operation not permitted` で弾かれる（2026-08-17 実測）
+        let handoff = Self.scratchDirectory()
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            .appendingPathComponent(item.filename)
-        try? FileManager.default.createDirectory(
-            at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let destination = handoff.appendingPathComponent(item.filename)
+        do {
+            try FileManager.default.createDirectory(at: handoff, withIntermediateDirectories: true)
+        } catch {
+            logger.error(
+                """
+                渡す場所を作れなかった: \(error.localizedDescription, privacy: .public) \
+                （\(handoff.path, privacy: .public)）
+                """)
+            completionHandler(nil, nil, NSFileProviderError(.serverUnreachable))
+            return progress
+        }
 
-        client.copy(path: item.path, to: destination) { result in
+        client.download(path: item.path, to: destination) { result in
             progress.completedUnitCount = 1
             switch result {
             case .failure(let error):
                 logger.error("取れなかった: \(error.localizedDescription, privacy: .public)")
+                try? FileManager.default.removeItem(at: handoff)
                 completionHandler(nil, nil, NSFileProviderError(.serverUnreachable))
             case .success:
                 logger.info("渡した: \(item.filename, privacy: .public)")

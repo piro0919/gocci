@@ -100,6 +100,75 @@ struct RcClient {
         }.resume()
     }
 
+    /// ファイルを丸ごと、決めた場所へ書き出す。
+    ///
+    /// `operations/copyfile` は使えない。落とすのは rclone で、あれは別のプロセス。
+    /// File Provider が渡し先に指す `.CloudStorage` の下は、拡張が自分で作ったものしか
+    /// 置けない。rclone に書かせると `operation not permitted`、いったん外へ落として
+    /// から移すと、今度は移すところで断られる（どちらも 2026-08-17 実測）。
+    ///
+    /// なので中身を配る口から流し込む。届いた端から書くので、大きくても手元に溜めない
+    func download(
+        path: String, to destination: URL, completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        let escaped =
+            path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
+        guard let url = URL(string: connection.contentBase.absoluteString + "/" + escaped),
+            FileManager.default.createFile(atPath: destination.path, contents: nil),
+            let handle = try? FileHandle(forWritingTo: destination)
+        else {
+            return completion(.failure(Failure.noAnswer))
+        }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 120
+
+        let sink = Sink(handle: handle, completion: completion)
+        let session = URLSession(configuration: .default, delegate: sink, delegateQueue: nil)
+        sink.session = session
+        session.dataTask(with: request).resume()
+    }
+
+    /// 届いた端からファイルへ書く係。`URLSession` は受け取り手を強く持つので、
+    /// 終わったら自分で session を畳まないと残り続ける
+    private final class Sink: NSObject, URLSessionDataDelegate {
+        private let handle: FileHandle
+        private let completion: (Result<Void, Error>) -> Void
+        private var rejection: Error?
+        var session: URLSession?
+
+        init(handle: FileHandle, completion: @escaping (Result<Void, Error>) -> Void) {
+            self.handle = handle
+            self.completion = completion
+        }
+
+        func urlSession(
+            _ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
+            completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+        ) {
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                rejection = Failure.rejected("中身を配る口が \(code) を返しました")
+                return completionHandler(.cancel)
+            }
+            completionHandler(.allow)
+        }
+
+        func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+            do { try handle.write(contentsOf: data) } catch { rejection = error }
+        }
+
+        func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+            try? handle.close()
+            self.session?.finishTasksAndInvalidate()
+            self.session = nil
+
+            if let rejection { return completion(.failure(rejection)) }
+            if let error { return completion(.failure(error)) }
+            completion(.success(()))
+        }
+    }
+
     // MARK: - 書く
 
     /// フォルダを作る
