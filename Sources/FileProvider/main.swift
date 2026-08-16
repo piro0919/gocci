@@ -72,9 +72,10 @@ final class Item: NSObject, NSFileProviderItem {
         if isDirectory {
             return [
                 .allowsReading, .allowsContentEnumerating, .allowsAddingSubItems, .allowsDeleting,
+                .allowsRenaming, .allowsReparenting,
             ]
         }
-        return [.allowsReading, .allowsWriting, .allowsDeleting]
+        return [.allowsReading, .allowsWriting, .allowsDeleting, .allowsRenaming, .allowsReparenting]
     }
 
     var itemVersion: NSFileProviderItemVersion {
@@ -379,13 +380,49 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
     ) -> Progress {
         let progress = Progress(totalUnitCount: 1)
 
-        // 中身が変わったときだけ引き受ける。名前の変更や移動はまだ
-        guard let client, changedFields.contains(.contents), let newContents else {
-            completionHandler(item, [], false, nil)
+        guard let client else {
+            completionHandler(nil, [], false, NSFileProviderError(.serverUnreachable))
             return progress
         }
 
         let path = item.itemIdentifier.rawValue
+
+        // 名前が変わった、あるいは別のフォルダへ移された。Drive では同じ操作になる
+        if changedFields.contains(.filename) || changedFields.contains(.parentItemIdentifier) {
+            let parent = Route.path(of: item.parentItemIdentifier)
+            let destination = parent.isEmpty ? item.filename : "\(parent)/\(item.filename)"
+
+            guard destination != path else {
+                completionHandler(item, [], false, nil)
+                return progress
+            }
+
+            client.moveFile(from: path, to: destination) { result in
+                progress.completedUnitCount = 1
+                switch result {
+                case .failure(let error):
+                    logger.error(
+                        "動かせなかった: \(path, privacy: .public) \(error.localizedDescription, privacy: .public)")
+                    completionHandler(nil, [], false, NSFileProviderError(.serverUnreachable))
+                case .success:
+                    let moved = Item(
+                        path: destination, isDirectory: false,
+                        bytes: item.documentSize.flatMap { $0 }?.int64Value ?? 0,
+                        modified: item.contentModificationDate.flatMap { $0 } ?? Date())
+                    Ledger.shared.remember(moved)
+                    logger.info("動かした: \(path, privacy: .public) → \(destination, privacy: .public)")
+                    completionHandler(moved, [], false, nil)
+                }
+            }
+            return progress
+        }
+
+        // 中身が書き換えられた
+        guard changedFields.contains(.contents), let newContents else {
+            completionHandler(item, [], false, nil)
+            return progress
+        }
+
         let parent = (path as NSString).deletingLastPathComponent
         let bytes =
             (try? newContents.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0

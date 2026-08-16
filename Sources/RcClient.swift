@@ -159,6 +159,20 @@ struct RcClient {
         }.resume()
     }
 
+    /// ファイルを動かす。名前を変えるのも、これで同じこと
+    func moveFile(
+        from source: String, to destination: String,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        call(
+            "operations/movefile",
+            [
+                "srcFs": connection.remote, "srcRemote": source,
+                "dstFs": connection.remote, "dstRemote": destination,
+            ]
+        ) { completion($0.map { _ in () }) }
+    }
+
     /// ファイルを1つ消す
     func deleteFile(path: String, completion: @escaping (Result<Void, Error>) -> Void) {
         call("operations/deletefile", ["fs": connection.remote, "remote": path]) {
