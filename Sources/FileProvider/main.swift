@@ -783,6 +783,62 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
     }
 }
 
+// MARK: - 右クリックの項目
+
+// File Provider の下では、Finder 拡張のメニューは出ない。両方を同時に持つこともできない
+// （Apple の開発者フォーラム 718381・736725）。出したい項目は拡張の Info.plist に
+// `NSExtensionFileProviderActions` として書き、ここで受ける。
+//
+// iCloud Drive の「ダウンロードを削除」は Apple の内製で、こちらには降りてこない。
+// 同じことをしたければ自分で足す
+
+extension GocciFileProvider: NSFileProviderCustomAction {
+    /// `@objc` を付ける。付けないと macOS からは実装が見えず、メニューは出るのに
+    /// 押しても何も起きない（2026-08-17 実測）
+    @objc func performAction(
+        identifier actionIdentifier: NSFileProviderExtensionActionIdentifier,
+        onItemsWithIdentifiers itemIdentifiers: [NSFileProviderItemIdentifier],
+        completionHandler: @escaping (Error?) -> Void
+    ) -> Progress {
+        let progress = Progress(totalUnitCount: Int64(itemIdentifiers.count))
+
+        guard actionIdentifier.rawValue == "io.kkweb.gocci.evict" else {
+            completionHandler(NSFileProviderError(.noSuchItem))
+            return progress
+        }
+
+        // 実体を捨てるのは macOS の受け持ち。こちらは頼むだけ
+        let domain = NSFileProviderDomain(
+            identifier: NSFileProviderDomainIdentifier("gocci"), displayName: "Gocci")
+        guard let manager = NSFileProviderManager(for: domain) else {
+            completionHandler(NSFileProviderError(.serverUnreachable))
+            return progress
+        }
+
+        let group = DispatchGroup()
+        for identifier in itemIdentifiers {
+            group.enter()
+            manager.evictItem(identifier: identifier) { error in
+                // 実体を持っていないものを頼まれることがある。捨てるものが無いだけなので、
+                // 失敗として扱わない
+                if let error, (error as NSError).code != NSFileProviderError.nonEvictable.rawValue {
+                    logger.error(
+                        "手元から消せなかった: \(String(describing: error), privacy: .public)")
+                }
+                progress.completedUnitCount += 1
+                group.leave()
+            }
+        }
+
+        let count = itemIdentifiers.count
+        group.notify(queue: .global()) {
+            logger.info("手元から消した: \(count) 件")
+            completionHandler(nil)
+        }
+        return progress
+    }
+}
+
 // MARK: - 途中だけ取る
 
 // 丸ごと落とさずに、読まれている辺りだけを渡す。10GB の動画を開いても、そこだけで済む。

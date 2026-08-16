@@ -97,6 +97,21 @@ cat > "$FP/Contents/Info.plist" <<PLIST
     <key>NSExtensionPointIdentifier</key><string>com.apple.fileprovider-nonui</string>
     <key>NSExtensionPrincipalClass</key><string>GocciFileProvider.GocciFileProvider</string>
     <key>NSExtensionFileProviderSupportsEnumeration</key><true/>
+    <!-- 右クリックに出す項目。File Provider の下では Finder 拡張のメニューが出ないので、
+         ここで宣言して \`performAction\` で受ける（Apple の開発者フォーラム 718381・736725） -->
+    <key>NSExtensionFileProviderActions</key>
+    <array>
+      <dict>
+        <key>NSExtensionFileProviderActionIdentifier</key>
+        <string>io.kkweb.gocci.evict</string>
+        <key>NSExtensionFileProviderActionName</key>
+        <string>ダウンロードを削除</string>
+        <!-- 常に出す。`isDownloaded` で絞ろうとしたが、条件が効かなかった（2026-08-17 実測）。
+             実体を持たないものに出ても、押したときに何も起きないだけで害はない -->
+        <key>NSExtensionFileProviderActionActivationRule</key>
+        <string>TRUEPREDICATE</string>
+      </dict>
+    </array>
   </dict>
 </dict>
 </plist>
