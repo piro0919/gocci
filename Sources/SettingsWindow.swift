@@ -12,6 +12,7 @@ final class SettingsWindowController: NSWindowController {
     private let launchCheckbox = NSButton(
         checkboxWithTitle: L.launchAtLogin, target: nil, action: nil)
     private let evictButton = NSButton(title: L.evictDownloads, target: nil, action: nil)
+    private let volumeLabel = NSTextField(labelWithString: "")
     private let languagePopUp = NSPopUpButton()
     private let messageLabel = NSTextField(labelWithString: "")
     /// 一度でも開いたか。入力欄に今の値が入っているかの判断に使う
@@ -63,6 +64,8 @@ final class SettingsWindowController: NSWindowController {
         evictButton.target = self
         evictButton.action = #selector(evictDownloads)
 
+        volumeLabel.font = .systemFont(ofSize: 13)
+
         let updateButton = NSButton(
             title: L.checkForUpdates, target: self, action: #selector(checkForUpdates))
         updateButton.bezelStyle = .rounded
@@ -82,7 +85,13 @@ final class SettingsWindowController: NSWindowController {
         var rows: [NSView] = []
         if remotes.count > 1 { rows.append(row(L.remote, remotePopUp)) }
 
+        let chooseVolume = NSButton(title: L.choose, target: self, action: #selector(chooseVolume))
+        chooseVolume.bezelStyle = .rounded
+        chooseVolume.isEnabled = Settings.canUseExternalVolume
+
         let stack = NSStackView(views: rows + [
+            row(L.storage, volumeLabel, chooseVolume),
+            divider(),
             row(L.clientID, clientIDField),
             row(L.clientSecret, clientSecretField),
             links(),
@@ -160,6 +169,7 @@ final class SettingsWindowController: NSWindowController {
         clientIDField.stringValue = credentials["client_id"] ?? ""
         clientSecretField.stringValue = credentials["client_secret"] ?? ""
         launchCheckbox.state = Settings.launchesAtLogin ? .on : .off
+        showVolume()
         report("")
         hasShown = true
 
@@ -288,6 +298,30 @@ final class SettingsWindowController: NSWindowController {
         label.textColor = .secondaryLabelColor
 
         return aligned(label)
+    }
+
+    /// 置き場所を選ぶ。ボリュームそのものを指すので、フォルダの中までは選ばせない
+    @objc private func chooseVolume() {
+        guard Settings.canUseExternalVolume else { return report(L.storageNeedsSequoia, failed: true) }
+
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(fileURLWithPath: "/Volumes")
+        panel.prompt = L.choose
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        // 選ばれたのがボリュームの根でなくても、そのボリュームに置かれる
+        Settings.volume = url.path
+        showVolume()
+        report(L.storageChanged)
+    }
+
+    private func showVolume() {
+        let volume = Settings.volume
+        volumeLabel.stringValue = volume.isEmpty ? L.storageBuiltIn : volume
     }
 
     /// 手元に降りてきた実体を捨てる。Drive のファイルはそのまま残る

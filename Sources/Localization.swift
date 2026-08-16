@@ -61,6 +61,15 @@ enum L {
         t("ブラウザで認証してください…", "Finish the sign-in in your browser…")
     }
     static var reconnected: String { t("認証し直しました", "Re-authenticated") }
+    static var storage: String { t("置き場所", "Stored on") }
+    static var storageBuiltIn: String { t("内蔵ディスク", "This Mac") }
+    static var choose: String { t("選択…", "Choose…") }
+    static var storageNeedsSequoia: String {
+        t("外付けに置けるのは macOS 15 以降です", "Storing on another disk needs macOS 15 or later")
+    }
+    static var storageChanged: String {
+        t("繋ぎ直します。降りてきていたものは消えます", "Reconnecting. Anything downloaded is dropped")
+    }
     static var evictDownloads: String { t("ダウンロードを空にする", "Remove Downloads") }
     static var evictedDownloads: String { t("空にしました", "Downloads removed") }
     static func evictFailed(_ reason: String) -> String {

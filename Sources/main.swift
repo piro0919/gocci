@@ -39,6 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastState: Provider.State?
 
     private var provider: Provider { Provider.shared }
+    /// 置き場所が変わったことに気づくために、前の値を控えておく
+    private var lastVolume = Settings.volume
 
     private var state: Provider.State { provider.state }
 
@@ -58,6 +60,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             forName: .settingsChanged, object: nil, queue: .main
         ) { [weak self] _ in
             guard let self else { return }
+
+            // 置き場所が変わった。繋ぎ直さないと前のボリュームに置かれたままになる
+            if self.lastVolume != Settings.volume {
+                self.lastVolume = Settings.volume
+                self.provider.stop { self.provider.start() }
+            }
+
             if self.builtLanguage != Language.resolved {
                 self.builtLanguage = Language.resolved
                 let wasVisible = self.settingsWindow.window?.isVisible ?? false

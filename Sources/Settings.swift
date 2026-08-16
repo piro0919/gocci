@@ -9,6 +9,7 @@ import ServiceManagement
 enum Settings {
     private static let remoteKey = "remote"
     private static let languageKey = "language"
+    private static let volumeKey = "volume"
 
     // MARK: - rclone のリモート
 
@@ -22,6 +23,26 @@ enum Settings {
             UserDefaults.standard.set(newValue, forKey: remoteKey)
             NotificationCenter.default.post(name: .settingsChanged, object: nil)
         }
+    }
+
+    // MARK: - 置き場所
+
+    /// ダウンロードしたものを置くボリューム。空なら内蔵（`~/Library/CloudStorage`）。
+    ///
+    /// 外付けに置けるのは macOS 15 から。拡張の Info.plist に
+    /// `NSExtensionFileProviderAllowsExternalVolumes` が要る（2026-08-17 に実測）
+    static var volume: String {
+        get { UserDefaults.standard.string(forKey: volumeKey) ?? "" }
+        set {
+            UserDefaults.standard.set(newValue, forKey: volumeKey)
+            NotificationCenter.default.post(name: .settingsChanged, object: nil)
+        }
+    }
+
+    /// 外付けに置けるか。置けない機械では、選ばせても意味がない
+    static var canUseExternalVolume: Bool {
+        if #available(macOS 15.0, *) { return true }
+        return false
     }
 
     // MARK: - 言語
