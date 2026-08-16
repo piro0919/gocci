@@ -40,7 +40,10 @@ final class Item: NSObject, NSFileProviderItem {
         self.bytes = bytes
         self.modified = modified
         self.path = path
-        self.signature = "\(bytes)-\(modified.timeIntervalSince1970)"
+        // 秒で丸める。小数のまま文字にすると、控えに書いて読み直すたびに揺れて、
+        // 変わっていないものまで「変わった」と伝えることになる
+        // （2026-08-16 実測。1件しか変えていないのに 1159 件を更新と数えた）
+        self.signature = "\(bytes)-\(Int(modified.timeIntervalSince1970))"
     }
 
     /// 親は台帳から引く。作るときに求めると、台帳を読み込んでいる最中に
@@ -123,7 +126,15 @@ final class Ledger {
             .appendingPathComponent("ledger.json")
     }
 
+    /// 最後にそのフォルダを並べた時刻。変化を見て回る先を絞るのに使う
+    private var listedAt: [String: Date] = [:]
+
     init() { load() }
+
+    func noteListed(_ directory: String) {
+        lock.lock(); defer { lock.unlock() }
+        listedAt[directory] = Date()
+    }
 
     func remember(_ item: Item) {
         lock.lock()
@@ -141,6 +152,42 @@ final class Ledger {
     func identifier(forPath path: String) -> NSFileProviderItemIdentifier? {
         lock.lock(); defer { lock.unlock() }
         return entries.values.first { $0.path == path }?.itemIdentifier
+    }
+
+    /// そのフォルダの直下として覚えているもの。変化の突き合わせに使う
+    func children(of directory: String) -> [Item] {
+        lock.lock(); defer { lock.unlock() }
+        return entries.values.filter {
+            ($0.path as NSString).deletingLastPathComponent == directory
+        }
+    }
+
+    /// 作業組に並べるもの。最近開いた場所の中身に絞る。
+    ///
+    /// 「最近使ったもの」を入れる場所であって、全部を入れる場所ではない
+    /// （`NSFileProviderItem.h` 30-36行）
+    func recent() -> [Item] {
+        let directories = Set(recentDirectories())
+        lock.lock(); defer { lock.unlock() }
+        return entries.values.filter {
+            directories.contains(($0.path as NSString).deletingLastPathComponent)
+        }
+    }
+
+    /// 変化を見て回る先。
+    ///
+    /// 覚えているフォルダを全部見ると、見るほどに覚えが増えて雪だるまになる
+    /// （2026-08-16 実測。2周で 1159 件から 5581 件に膨らんだ）。
+    /// 人が最近開いたところだけにする。閉じた場所の変化は、開き直したときに拾えばいい
+    func recentDirectories(within age: TimeInterval = 1800, limit: Int = 20) -> [String] {
+        lock.lock(); defer { lock.unlock() }
+
+        let fresh = listedAt.filter { Date().timeIntervalSince($0.value) < age }
+            .sorted { $0.value > $1.value }
+            .prefix(limit)
+            .map(\.key)
+        // 根はいつも見る。ここが一番変わる
+        return Array(Set(fresh).union([""]))
     }
 
     /// 識別子から道を引く。rclone に頼むときは道が要る
@@ -204,11 +251,19 @@ final class Enumerator: NSObject, NSFileProviderEnumerator {
     func enumerateItems(
         for observer: NSFileProviderEnumerationObserver, startingAt page: NSFileProviderPage
     ) {
-        // ゴミ箱と作業組は中身を持たない。空だと答える。
-        //
-        // 作業組（`workingSet`）は macOS が内部で使う入れ物で、Drive の道ではない。
-        // そのまま rclone へ渡すと `directory not found` になる（2026-08-16 実測）
-        guard container != .trashContainer, container != .workingSet else {
+        // ゴミ箱は中身を持たない
+        guard container != .trashContainer else {
+            observer.finishEnumerating(upTo: nil)
+            return
+        }
+
+        // 作業組は「一度でも見た場所」の集まり。Drive の道ではないので、
+        // そのまま rclone へ渡すと `directory not found` になる（2026-08-16 実測）。
+        // ここには覚えているものを並べる。並べておかないと、変化を伝える先が無い
+        if container == .workingSet {
+            let known = Ledger.shared.recent()
+            logger.info("作業組を並べた: \(known.count) 件")
+            observer.didEnumerate(known)
             observer.finishEnumerating(upTo: nil)
             return
         }
@@ -238,6 +293,7 @@ final class Enumerator: NSObject, NSFileProviderEnumerator {
                     Ledger.shared.remember(item)
                     return item
                 }
+                Ledger.shared.noteListed(base)
                 logger.info("並べた: \(base, privacy: .public) の \(items.count) 件")
                 observer.didEnumerate(items)
                 observer.finishEnumerating(upTo: nil)
@@ -245,15 +301,146 @@ final class Enumerator: NSObject, NSFileProviderEnumerator {
         }
     }
 
+    /// Drive 側で変わったものを伝える。
+    ///
+    /// Drive に「前回から何が変わったか」を訊く道は rclone に無い。なので、今の一覧を取って
+    /// 手元の覚えと突き合わせる。増えた・変わった・消えたを、それぞれ macOS に渡す。
+    ///
+    /// 呼ばれるのは、アプリが `signalEnumerator` で「見直して」と言ったときと、
+    /// macOS が自分の都合で確かめたいとき
+    /// 覚えているフォルダを順に見て回り、変わっていたものをまとめて伝える。
+    ///
+    /// Drive に「前回から何が変わったか」を訊く道は rclone に無いので、こうするしかない。
+    /// 数が増えると重くなるが、見に行くのは1分に1回で、しかも一覧だけ
+    private func sweepForChanges(
+        client: RcClient, observer: NSFileProviderChangeObserver, anchor: NSFileProviderSyncAnchor
+    ) {
+        let directories = Ledger.shared.recentDirectories()
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var changed: [Item] = []
+        var gone: [NSFileProviderItemIdentifier] = []
+
+        for base in directories {
+            group.enter()
+            let remembered = Ledger.shared.children(of: base)
+
+            client.list(base) { result in
+                defer { group.leave() }
+                guard case .success(let entries) = result else { return }
+
+                var seen = Set<String>()
+                var mine: [Item] = []
+
+                for entry in entries {
+                    let path = base.isEmpty ? entry.name : "\(base)/\(entry.name)"
+                    seen.insert(entry.id)
+
+                    let item = Item(
+                        id: entry.id, path: path, isDirectory: entry.isDirectory,
+                        bytes: entry.size, modified: entry.modified)
+
+                    if let known = remembered.first(where: {
+                        $0.itemIdentifier.rawValue == entry.id
+                    }), known.signature == item.signature, known.path == item.path {
+                        continue
+                    }
+                    Ledger.shared.remember(item)
+                    mine.append(item)
+                }
+
+                let missing = remembered.filter { !seen.contains($0.itemIdentifier.rawValue) }
+                for item in missing { Ledger.shared.forget(item.itemIdentifier) }
+
+                lock.lock()
+                changed.append(contentsOf: mine)
+                gone.append(contentsOf: missing.map(\.itemIdentifier))
+                lock.unlock()
+            }
+        }
+
+        group.notify(queue: .global()) {
+            if !changed.isEmpty { observer.didUpdate(changed) }
+            if !gone.isEmpty { observer.didDeleteItems(withIdentifiers: gone) }
+            if !changed.isEmpty || !gone.isEmpty {
+                logger.info("見て回った: 更新 \(changed.count) / 消えた \(gone.count)")
+            }
+            observer.finishEnumeratingChanges(
+                upTo: NSFileProviderSyncAnchor(Data(String(Date().timeIntervalSince1970).utf8)),
+                moreComing: false)
+        }
+    }
+
     func enumerateChanges(
         for observer: NSFileProviderChangeObserver, from anchor: NSFileProviderSyncAnchor
     ) {
-        // Drive 側の変化を拾う道はまだ入れていない。開き直せば読み直される
-        observer.finishEnumeratingChanges(upTo: anchor, moreComing: false)
+        guard container != .trashContainer, let client else {
+            observer.finishEnumeratingChanges(upTo: anchor, moreComing: false)
+            return
+        }
+
+        // 作業組で訊かれたら、覚えているフォルダを順に見て回る
+        if container == .workingSet {
+            sweepForChanges(client: client, observer: observer, anchor: anchor)
+            return
+        }
+
+        guard let base = Ledger.shared.path(of: container) else {
+            observer.finishEnumeratingChanges(upTo: anchor, moreComing: false)
+            return
+        }
+
+        logger.info("変化を訊かれた: \(base, privacy: .public)")
+        let remembered = Ledger.shared.children(of: base)
+
+        client.list(base) { result in
+            guard case .success(let entries) = result else {
+                // 訊けなかっただけで、変わっていないとは限らない。次に持ち越す
+                observer.finishEnumeratingChanges(upTo: anchor, moreComing: false)
+                return
+            }
+
+            var changed: [Item] = []
+            var seen = Set<String>()
+
+            for entry in entries {
+                let path = base.isEmpty ? entry.name : "\(base)/\(entry.name)"
+                seen.insert(entry.id)
+
+                let item = Item(
+                    id: entry.id, path: path, isDirectory: entry.isDirectory,
+                    bytes: entry.size, modified: entry.modified)
+
+                // 中身も名前も変わっていなければ、伝える必要がない
+                if let known = remembered.first(where: { $0.itemIdentifier.rawValue == entry.id }),
+                    known.signature == item.signature, known.path == item.path
+                {
+                    continue
+                }
+                Ledger.shared.remember(item)
+                changed.append(item)
+            }
+
+            let gone = remembered.filter { !seen.contains($0.itemIdentifier.rawValue) }
+            for item in gone { Ledger.shared.forget(item.itemIdentifier) }
+
+            if !changed.isEmpty { observer.didUpdate(changed) }
+            if !gone.isEmpty { observer.didDeleteItems(withIdentifiers: gone.map(\.itemIdentifier)) }
+
+            if !changed.isEmpty || !gone.isEmpty {
+                logger.info(
+                    "変わっていた: \(base, privacy: .public) で 更新 \(changed.count) / 消えた \(gone.count)")
+            }
+            observer.finishEnumeratingChanges(
+                upTo: NSFileProviderSyncAnchor(Data(String(Date().timeIntervalSince1970).utf8)),
+                moreComing: false)
+        }
     }
 
+    /// 今どこまで見たか。ここが変わらないと、macOS は変化を訊きに来ない
     func currentSyncAnchor(completionHandler: @escaping (NSFileProviderSyncAnchor?) -> Void) {
-        completionHandler(NSFileProviderSyncAnchor(Data("1".utf8)))
+        completionHandler(
+            NSFileProviderSyncAnchor(Data(String(Date().timeIntervalSince1970).utf8)))
     }
 }
 

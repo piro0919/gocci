@@ -127,6 +127,7 @@ final class Provider {
                         port: endpoint.port, user: endpoint.user, password: endpoint.password,
                         remote: Settings.remote + ":", contentPort: contentPort)
                     self.addDomain()
+                    self.startWatching()
                 }
             }
         }
@@ -148,6 +149,42 @@ final class Provider {
                     providerLogger.info("繋がった")
                     self.state = .on
                 }
+            }
+        }
+    }
+
+    // MARK: - Drive 側の変化
+
+    private var watchTimer: Timer?
+    /// 見に行く間隔。短くすると Drive を舐め続けることになる
+    private static let watchInterval: TimeInterval = 60
+
+    /// 「見直して」と macOS に言う。実際に何が変わったかは拡張が調べる。
+    ///
+    /// 声をかける先は作業組（`workingSet`）。ここが「一度でも見た場所」の集まりで、
+    /// 親フォルダを開いていなくても変化を伝えられる口になっている
+    /// （`NSFileProviderItem.h` 25-42行）。根に声をかけても何も起きない（実測）
+    private func startWatching() {
+        watchTimer?.invalidate()
+
+        let timer = Timer.scheduledTimer(withTimeInterval: Self.watchInterval, repeats: true) {
+            [weak self] _ in
+            Task { @MainActor in self?.signal() }
+        }
+        watchTimer = timer
+    }
+
+    private func signal() {
+        guard state == .on else { return }
+
+        let domain = NSFileProviderDomain(identifier: Self.domainIdentifier, displayName: "Gocci")
+        guard let manager = NSFileProviderManager(for: domain) else { return }
+
+        providerLogger.info("見直しを頼んだ")
+        manager.signalEnumerator(for: .workingSet) { error in
+            if let error {
+                providerLogger.error(
+                    "見直しを頼めなかった: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -180,6 +217,8 @@ final class Provider {
     }
 
     private func finishStopping() {
+        watchTimer?.invalidate()
+        watchTimer = nil
         rclone?.terminate()
         rclone = nil
         // 古い口を叩き続けないように、控えも消す
