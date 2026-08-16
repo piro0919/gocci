@@ -568,7 +568,10 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
             return progress
         }
 
-        let destination = FileManager.default.temporaryDirectory
+        // 途中だけ渡す道と同じで、渡すファイルは見える場所と同じボリュームに置く。
+        // 手元の一時置き場に作ると、外付けのときに別のボリュームになり、
+        // 渡した直後に `POSIX 2` で断られる（2026-08-17 実測）
+        let destination = Self.scratchDirectory()
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
             .appendingPathComponent(item.filename)
         try? FileManager.default.createDirectory(
@@ -869,6 +872,9 @@ extension GocciFileProvider: NSFileProviderCustomAction {
 // - ファイルの大きさは、渡した範囲の終わりまであれば足りる
 
 extension GocciFileProvider: NSFileProviderPartialContentFetching {
+    /// 一度に取りに行く最小の量。これより小さく頼まれても、この分は取っておく
+    private static let readAhead = 8 << 20
+
     func fetchPartialContents(
         for itemIdentifier: NSFileProviderItemIdentifier, version requestedVersion: NSFileProviderItemVersion,
         request: NSFileProviderRequest, minimalRange requestedRange: NSRange,
@@ -883,12 +889,16 @@ extension GocciFileProvider: NSFileProviderPartialContentFetching {
                 return
             }
 
-            // 頼まれた範囲を覆うように、指定された単位へ広げる
+            // 頼まれた範囲を覆うように、指定された単位へ広げる。
+            //
+            // 頼まれた分ちょうどを返すと、頭から読むだけで往復が何百回にもなる。macOS が
+            // 訊いてくるのは 16KB ずつで、しかも一度取るたびに間を置かれるので、9MB の
+            // ファイルに18分かかった（2026-08-17 実測）。先を多めに取っておく
             let start = (requestedRange.location / alignment) * alignment
+            let wanted = max(
+                requestedRange.location + requestedRange.length - start, Self.readAhead)
             let end = min(
-                Int(item.bytes),
-                ((requestedRange.location + requestedRange.length + alignment - 1) / alignment)
-                    * alignment)
+                Int(item.bytes), start + ((wanted + alignment - 1) / alignment) * alignment)
             let length = max(0, end - start)
 
             guard length > 0 else {

@@ -660,6 +660,21 @@ rclone を起こしてから申し出ると `513` で断られ続ける。順序
 置き場所は `NSFileProviderManager.temporaryDirectoryURL()` に訊く。
 外付けの識別子は毎回変わるので、拡張が `init(domain:)` で受け取った domain を控えておく。
 
+**これは途中を渡す道と丸ごと渡す道の両方に要る。** 片方（`fetchPartialContents`）だけ直して
+`fetchContents` を手元の一時置き場のままにしていたため、丸ごと落とすと Finder が
+「ファイルまたはディレクトリがありません」を出した。こちらのログは「渡した」で終わっており、
+断られているのは受け取る側なので、`fileproviderd` を見ないと分からない（2026-08-17 実測）。
+
+```text
+GocciFileProvider: 渡した: Brand New Day.mp3
+fileproviderd:     Download root <private> failed with error: POSIX 2
+```
+
+**5. 途中を渡すときは、頼まれた分より多く取っておく。**
+macOS が訊いてくるのは 16KB ずつで、一度取るたびに間を置かれる。頼まれた分ちょうどを
+返すと 9MB のファイルに18分かかった。8MB ずつ先を取るようにして3秒になった
+（2026-08-17 実測。どちらも MD5 は Drive 側と一致）。
+
 #### 遠回りした原因（同じ轍を踏まないために）
 
 - **`/Applications` に古いビルドが入ったまま2時間以上検証した。** 「順序が原因」「Sparkle が
