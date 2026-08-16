@@ -18,6 +18,10 @@ final class SettingsWindowController: NSWindowController {
         checkboxWithTitle: L.keepFinderSettings, target: nil, action: nil)
     private let fileProviderCheckbox = NSButton(
         checkboxWithTitle: L.useFileProvider, target: nil, action: nil)
+    /// 場所を借りて繋ぐときにだけ意味のある行。クラウドのフォルダでは畳む
+    private var mountOnlyRows: [NSView] = []
+    private lazy var finderSettingsRow: NSView = checkboxRow(finderSettingsCheckbox)
+    private lazy var finderSettingsHintRow: NSView = hint(L.keepFinderSettingsHint)
     private let languagePopUp = NSPopUpButton()
     private let freeSpaceLabel = NSTextField(labelWithString: "")
     private let usageLabel = NSTextField(labelWithString: "")
@@ -111,7 +115,17 @@ final class SettingsWindowController: NSWindowController {
         // 接続先が1つなら、行そのものを置かない。隠すだけだと余白が残る
         if remotes.count == 1, remotes[0] != Settings.remote { Settings.remote = remotes[0] }
 
-        var rows: [NSView] = [row(L.mountPoint, mountPointField, chooseMountPoint)]
+        // 置き場所も手元の残し方も、クラウドのフォルダとして見せるなら macOS の受け持ち。
+        // 出しておくと「効かない設定」になるので、そのときは行ごと畳む
+        mountOnlyRows = [
+            row(L.mountPoint, mountPointField, chooseMountPoint),
+            row(L.cacheMaxAge, periodPopUp),
+            row(L.cacheMaxSize, limitPopUp),
+            aligned(freeSpaceLabel),
+            cacheRow(),
+        ]
+
+        var rows: [NSView] = [mountOnlyRows[0]]
         if remotes.count > 1 { rows.append(row(L.remote, remotePopUp)) }
 
         let stack = NSStackView(views: rows + [
@@ -120,14 +134,14 @@ final class SettingsWindowController: NSWindowController {
             row(L.clientSecret, clientSecretField),
             links(),
             divider(),
-            row(L.cacheMaxAge, periodPopUp),
-            row(L.cacheMaxSize, limitPopUp),
-            aligned(freeSpaceLabel),
-            cacheRow(),
+            mountOnlyRows[1],
+            mountOnlyRows[2],
+            mountOnlyRows[3],
+            mountOnlyRows[4],
             checkboxRow(fileProviderCheckbox),
             hint(L.useFileProviderHint),
-            checkboxRow(finderSettingsCheckbox),
-            hint(L.keepFinderSettingsHint),
+            finderSettingsRow,
+            finderSettingsHintRow,
             divider(),
             row(L.language, languagePopUp),
             checkboxRow(launchCheckbox),
@@ -138,6 +152,8 @@ final class SettingsWindowController: NSWindowController {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 14
+        // 畳んだ行の場所を残さない。残すと、繋ぎ方を変えたときに空白だけが居座る
+        stack.detachesHiddenViews = true
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         // 余白は枠との距離として直接指定する。積み上げ側の余白指定は、
@@ -358,11 +374,17 @@ final class SettingsWindowController: NSWindowController {
         report(L.reconnecting2)
     }
 
-    /// クラウドのフォルダとして見せているなら、`.DS_Store` の設定は出番がない
+    /// クラウドのフォルダとして見せているときに、効かない設定を畳む
     private func updateFinderSettingsVisibility() {
-        let showing = !Settings.usesFileProvider
-        finderSettingsCheckbox.isHidden = !showing
-        finderSettingsCheckbox.superview?.isHidden = !showing
+        let borrowing = !Settings.usesFileProvider
+        for view in mountOnlyRows { view.isHidden = !borrowing }
+        finderSettingsRow.isHidden = !borrowing
+        finderSettingsHintRow.isHidden = !borrowing
+
+        // 畳んだぶん、窓も縮める
+        guard let window = window, let content = window.contentView else { return }
+        content.layoutSubtreeIfNeeded()
+        window.setContentSize(NSSize(width: 460, height: content.fittingSize.height))
     }
 
     /// client_id を取りに行くための入口と、書き込みの実行
