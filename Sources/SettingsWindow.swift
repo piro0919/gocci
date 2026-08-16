@@ -6,26 +6,12 @@ import AppKit
 // 言語を変えると文字列が全部変わるので、そのときは画面ごと作り直す。
 
 final class SettingsWindowController: NSWindowController {
-    private let mountPointField = NSTextField(string: "")
     private let remotePopUp = NSPopUpButton()
-    private let periodPopUp = NSPopUpButton()
-    private let limitPopUp = NSPopUpButton()
     private let clientIDField = NSTextField(string: "")
     private let clientSecretField = NSSecureTextField(string: "")
     private let launchCheckbox = NSButton(
         checkboxWithTitle: L.launchAtLogin, target: nil, action: nil)
-    private let finderSettingsCheckbox = NSButton(
-        checkboxWithTitle: L.keepFinderSettings, target: nil, action: nil)
-    private let fileProviderCheckbox = NSButton(
-        checkboxWithTitle: L.useFileProvider, target: nil, action: nil)
-    /// 場所を借りて繋ぐときにだけ意味のある行。クラウドのフォルダでは畳む
-    private var mountOnlyRows: [NSView] = []
-    private lazy var finderSettingsRow: NSView = checkboxRow(finderSettingsCheckbox)
-    private lazy var finderSettingsHintRow: NSView = hint(L.keepFinderSettingsHint)
     private let languagePopUp = NSPopUpButton()
-    private let freeSpaceLabel = NSTextField(labelWithString: "")
-    private let usageLabel = NSTextField(labelWithString: "")
-    private let emptyCacheButton = NSButton(title: L.emptyCache, target: nil, action: nil)
     private let messageLabel = NSTextField(labelWithString: "")
     /// 一度でも開いたか。入力欄に今の値が入っているかの判断に使う
     private var hasShown = false
@@ -50,40 +36,15 @@ final class SettingsWindowController: NSWindowController {
 
         window.delegate = self
 
-        for field in [mountPointField] {
-            field.target = self
-            field.action = #selector(commitFields)
-        }
-        mountPointField.placeholderString = "/Volumes/…"
         remotePopUp.target = self
         remotePopUp.action = #selector(changeRemote)
 
-        periodPopUp.target = self
-        periodPopUp.action = #selector(changePeriod)
-        for period in CachePeriod.allCases { periodPopUp.addItem(withTitle: period.label) }
-
-        limitPopUp.target = self
-        limitPopUp.action = #selector(changeLimit)
-        for limit in CacheLimit.allCases { limitPopUp.addItem(withTitle: limit.label) }
-
-        freeSpaceLabel.font = .systemFont(ofSize: 11)
-        freeSpaceLabel.textColor = .secondaryLabelColor
-
-        usageLabel.font = .systemFont(ofSize: 11)
-        usageLabel.textColor = .secondaryLabelColor
-        emptyCacheButton.bezelStyle = .rounded
-        emptyCacheButton.target = self
-        emptyCacheButton.action = #selector(emptyCache)
         clientIDField.placeholderString = "…apps.googleusercontent.com"
 
         launchCheckbox.target = self
         launchCheckbox.action = #selector(toggleLaunch)
 
 
-        finderSettingsCheckbox.target = self
-        finderSettingsCheckbox.action = #selector(toggleFinderSettings)
-        fileProviderCheckbox.target = self
-        fileProviderCheckbox.action = #selector(toggleFileProvider)
 
         languagePopUp.target = self
         languagePopUp.action = #selector(changeLanguage)
@@ -96,10 +57,6 @@ final class SettingsWindowController: NSWindowController {
         messageLabel.font = .systemFont(ofSize: 11)
         // 文字が無いときは畳む。空のまま置くと、その行のぶんだけ間延びする
         messageLabel.isHidden = true
-
-        let chooseMountPoint = NSButton(
-            title: L.choose, target: self, action: #selector(chooseMountPoint))
-        chooseMountPoint.bezelStyle = .rounded
 
         let updateButton = NSButton(
             title: L.checkForUpdates, target: self, action: #selector(checkForUpdates))
@@ -115,33 +72,15 @@ final class SettingsWindowController: NSWindowController {
         // 接続先が1つなら、行そのものを置かない。隠すだけだと余白が残る
         if remotes.count == 1, remotes[0] != Settings.remote { Settings.remote = remotes[0] }
 
-        // 置き場所も手元の残し方も、クラウドのフォルダとして見せるなら macOS の受け持ち。
-        // 出しておくと「効かない設定」になるので、そのときは行ごと畳む
-        mountOnlyRows = [
-            row(L.mountPoint, mountPointField, chooseMountPoint),
-            row(L.cacheMaxAge, periodPopUp),
-            row(L.cacheMaxSize, limitPopUp),
-            aligned(freeSpaceLabel),
-            cacheRow(),
-        ]
-
-        var rows: [NSView] = [mountOnlyRows[0]]
+        // 置き場所も、手元にどれだけ残すかも、macOS の受け持ちになった。
+        // ここに出しても効かないので、行ごと置かない
+        var rows: [NSView] = []
         if remotes.count > 1 { rows.append(row(L.remote, remotePopUp)) }
 
         let stack = NSStackView(views: rows + [
-            divider(),
             row(L.clientID, clientIDField),
             row(L.clientSecret, clientSecretField),
             links(),
-            divider(),
-            mountOnlyRows[1],
-            mountOnlyRows[2],
-            mountOnlyRows[3],
-            mountOnlyRows[4],
-            checkboxRow(fileProviderCheckbox),
-            hint(L.useFileProviderHint),
-            finderSettingsRow,
-            finderSettingsHintRow,
             divider(),
             row(L.language, languagePopUp),
             checkboxRow(launchCheckbox),
@@ -200,40 +139,20 @@ final class SettingsWindowController: NSWindowController {
     /// チェックの行
     private func checkboxRow(_ checkbox: NSButton) -> NSView { aligned(checkbox) }
 
-    /// 「キャッシュを空にする」と、今どれだけ使っているか。
-    ///
-    /// 横に並べない。窓の幅は組み上がりから決めているので、あとから伸びる文字を
-    /// 同じ行に置くと、行ごと詰められて文字が出なくなる
-    private func cacheRow() -> NSView {
-        let stack = NSStackView(views: [emptyCacheButton, usageLabel])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 6
-        return aligned(stack)
-    }
 
     func show() {
         // 開くたびに読み直す。設定画面の外（システム設定）で変えられることがあるため
-        mountPointField.stringValue = Settings.mountPoint
         let available = RcloneConfig.driveRemotes()
         remotePopUp.removeAllItems()
         remotePopUp.addItems(withTitles: available.isEmpty ? [Settings.remote] : available)
         remotePopUp.selectItem(withTitle: Settings.remote)
         if remotePopUp.indexOfSelectedItem < 0 { remotePopUp.selectItem(at: 0) }
 
-        periodPopUp.selectItem(at: CachePeriod.allCases.firstIndex(of: Settings.cachePeriod) ?? 0)
-        limitPopUp.selectItem(at: CacheLimit.allCases.firstIndex(of: Settings.cacheLimit) ?? 0)
-        showFreeSpace()
-        showUsage()
 
         let credentials = RcloneConfig.values(of: Settings.remote)
         clientIDField.stringValue = credentials["client_id"] ?? ""
         clientSecretField.stringValue = credentials["client_secret"] ?? ""
         launchCheckbox.state = Settings.launchesAtLogin ? .on : .off
-        finderSettingsCheckbox.state = Settings.keepsFinderSettings ? .on : .off
-        fileProviderCheckbox.state = Settings.usesFileProvider ? .on : .off
-        // 落ちてこないのはクラウドのフォルダでは当たり前なので、そちらの設定は隠す
-        updateFinderSettingsVisibility()
         report("")
         hasShown = true
 
@@ -251,29 +170,9 @@ final class SettingsWindowController: NSWindowController {
     /// この番をしないと、終了時の閉じる通知で空欄が設定を上書きする
     @objc private func commitFields() {
         guard hasShown else { return }
-
-        if mountPointField.stringValue != Settings.mountPoint {
-            Settings.mountPoint = mountPointField.stringValue
-        }
-
     }
 
-    @objc private func chooseMountPoint() {
-        guard let path = pickDirectory() else { return }
-        mountPointField.stringValue = path
-        commitFields()
-    }
 
-    /// マウント先はまだ無い場所を指すこともあるので、新しいフォルダを作れるようにしておく
-    private func pickDirectory() -> String? {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK else { return nil }
-        return panel.url?.path
-    }
 
     @objc private func toggleLaunch() {
         let wanted = launchCheckbox.state == .on
@@ -291,101 +190,13 @@ final class SettingsWindowController: NSWindowController {
         Settings.remote = title
     }
 
-    @objc private func changePeriod() {
-        let index = periodPopUp.indexOfSelectedItem
-        guard CachePeriod.allCases.indices.contains(index) else { return }
-        Settings.cachePeriod = CachePeriod.allCases[index]
-    }
 
-    @objc private func changeLimit() {
-        let index = limitPopUp.indexOfSelectedItem
-        guard CacheLimit.allCases.indices.contains(index) else { return }
-        Settings.cacheLimit = CacheLimit.allCases[index]
-        showFreeSpace()
-        showUsage()
-    }
 
-    /// キャッシュを空にする。押した本人に一度訊く。消えるのは手元のぶんだけだが、
-    /// 大きな Drive では取り直しに何時間もかかる
-    @objc private func emptyCache() {
-        let alert = NSAlert()
-        alert.messageText = L.cachePurgeTitle
-        alert.informativeText = L.cachePurgeBody
-        alert.addButton(withTitle: L.cachePurgeConfirm)
-        alert.addButton(withTitle: L.cancel)
-        alert.alertStyle = .warning
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
 
-        emptyCacheButton.isEnabled = false
-        MountController.shared.purgeCache { [weak self] failure in
-            guard let self else { return }
-            self.emptyCacheButton.isEnabled = true
-            self.report(failure.map { L.cachePurgeFailed($0) } ?? "")
-            self.showUsage()
-            self.showFreeSpace()
-        }
-    }
 
-    /// 今どれだけ使っているか。フォルダを歩くので裏で数え、出すときだけ主スレッドへ戻る
-    private func showUsage() {
-        usageLabel.stringValue = ""
-        let limit = Settings.cacheLimit
-        DispatchQueue.global(qos: .utility).async {
-            let used = Settings.cacheUsedBytes()
-            let usedText = Settings.byteText(used)
-            let limitText = limit == .unlimited ? "" : limit.label
-            DispatchQueue.main.async {
-                self.usageLabel.stringValue = L.cacheUsage(usedText, limitText)
-            }
-        }
-    }
 
-    /// 上限の下に、置き場所の空きを出す。
-    ///
-    /// 数字だけ並べても、置き場所の空きと比べなければ選びようがない。選んだ上限が空きを
-    /// 超えているときは、そこだけ言い方を変える。rclone は空きを見ないので、上限が空きより
-    /// 大きいと上限は効かず、ディスクが先に埋まる
-    private func showFreeSpace() {
-        guard let free = Settings.cacheDiskFreeBytes else {
-            freeSpaceLabel.stringValue = ""
-            freeSpaceLabel.isHidden = true
-            return
-        }
 
-        let text = Settings.byteText(free)
-        let limit = Settings.cacheLimit.bytes
-        freeSpaceLabel.stringValue =
-            (limit.map { $0 > free } ?? false)
-            ? L.cacheLimitOverFree(text)
-            : L.cacheDiskFree(text, Settings.cacheMinFreeSpace.replacingOccurrences(of: "G", with: "GB"))
-        freeSpaceLabel.textColor =
-            (limit.map { $0 > free } ?? false) ? .systemOrange : .secondaryLabelColor
-        freeSpaceLabel.isHidden = false
-    }
 
-    @objc private func toggleFinderSettings() {
-        Settings.keepsFinderSettings = finderSettingsCheckbox.state == .on
-    }
-
-    /// 見せ方を切り替える。繋ぎ直しになるので、押した人には結果を出す
-    @objc private func toggleFileProvider() {
-        Settings.usesFileProvider = fileProviderCheckbox.state == .on
-        updateFinderSettingsVisibility()
-        report(L.reconnecting2)
-    }
-
-    /// クラウドのフォルダとして見せているときに、効かない設定を畳む
-    private func updateFinderSettingsVisibility() {
-        let borrowing = !Settings.usesFileProvider
-        for view in mountOnlyRows { view.isHidden = !borrowing }
-        finderSettingsRow.isHidden = !borrowing
-        finderSettingsHintRow.isHidden = !borrowing
-
-        // 畳んだぶん、窓も縮める
-        guard let window = window, let content = window.contentView else { return }
-        content.layoutSubtreeIfNeeded()
-        window.setContentSize(NSSize(width: 460, height: content.fittingSize.height))
-    }
 
     /// client_id を取りに行くための入口と、書き込みの実行
     private func links() -> NSView {
@@ -446,8 +257,8 @@ final class SettingsWindowController: NSWindowController {
             self.report(L.reconnected)
 
             // 認証が変わったので繋ぎ直す。繋がっていないときは何もしない
-            if MountController.shared.state == .mounted {
-                MountController.shared.remount()
+            if Provider.shared.state == .on {
+                Provider.shared.stop { Provider.shared.start() }
             }
         }
     }

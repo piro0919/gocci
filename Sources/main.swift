@@ -31,43 +31,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var blinkTimer: Timer?
     private var blinkOn = true
 
-    /// 取りに行っている間だけ印の隣で回る輪
-    private let spinner = SpinnerView()
-    private var transferTimer: Timer?
-    private var isTransferring = false
-
     private var settingsWindow = SettingsWindowController()
     /// 画面を作り直すかの判断に使う。文字列は組み立て時に焼き込まれるため
     private var builtLanguage = Language.resolved
-    private var pollTimer: Timer?
 
     /// 繋がった瞬間を拾うために、前の状態を控えておく
-    private var lastState: MountState?
+    private var lastState: Provider.State?
 
-    private var mount: MountController { MountController.shared }
+    private var provider: Provider { Provider.shared }
 
-    /// 今どちらの見せ方で繋いでいるか。設定で切り替える
-    private var usesProvider: Bool { Settings.usesFileProvider }
-    /// 切り替わったことに気づくために、前の値を控えておく
-    private var lastUsesProvider = Settings.usesFileProvider
-
-    /// 印にもメニューにも、こちらの言葉で渡す
-    private var state: MountState {
-        usesProvider ? Provider.shared.displayState : mount.state
-    }
+    private var state: Provider.State { provider.state }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.menu = menu
-        buildSpinner()
-
-        NotificationCenter.default.addObserver(
-            forName: .mountStateChanged, object: nil, queue: .main
-        ) { [weak self] _ in
-            self?.refresh()
-        }
 
         NotificationCenter.default.addObserver(
             forName: .providerStateChanged, object: nil, queue: .main
@@ -79,13 +58,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             forName: .settingsChanged, object: nil, queue: .main
         ) { [weak self] _ in
             guard let self else { return }
-
-            // 見せ方が変わった。片方を外してから、もう片方で繋ぎ直す
-            if self.lastUsesProvider != Settings.usesFileProvider {
-                self.lastUsesProvider = Settings.usesFileProvider
-                self.switchStyle()
-            }
-
             if self.builtLanguage != Language.resolved {
                 self.builtLanguage = Language.resolved
                 let wasVisible = self.settingsWindow.window?.isVisible ?? false
@@ -95,22 +67,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             self.buildMenu()
             self.refresh()
-
-            // 設定を入れた瞬間に、マウント先の下を一通り歩く。「入れたのに何も起きない」を避ける
-            if MountController.shared.state == .mounted {
-                FinderView.sweep(Settings.mountPoint)
-            }
-        }
-
-        // 外付けを抜かれた、別のアプリに外された、といった変化はこちらに通知が来ない
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
-            self?.mount.refresh()
-        }
-
-        // 取りに行っているかを rclone に訊く。読み始めてから載るまで数秒かかるので、
-        // 見に行く間隔もそれに合わせて短くしすぎない
-        transferTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            self?.checkTransfers()
         }
 
         refresh()
@@ -120,31 +76,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 更新の確認は起動時に1回だけ。見つかったときだけ画面が出る
         Updater.shared.checkQuietly()
 
-        // Finder のバッジに使う一覧。拡張は自分では調べられないので、こちらが書く
-        BadgeIndex.start()
-
-        // Finder の右クリックから「手元から削除」を頼まれる。拡張は自分では消せない
-        Evict.start()
-
-        // 拡張が報せてくる「開いたフォルダ」を拾い、その一段先を覆う
-        FinderView.startWatching()
-
-        // 中断で途中のまま残ったファイルを、最後まで取りにいく
-        Finisher.start()
-
-        // 外付けが挿さったら繋ぐ。5秒の見回りでも拾えるが、待たされた感じになる。
-        //
-        // 通知が来た直後は、ボリュームがまだ落ち着いていない。その隙にマウントを始めると
-        // 失敗しやすく、失敗の後始末で外付けごと外れることがある。少し置いてから動く
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didMountNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                guard let self, !self.usesProvider else { return }
-                self.mount.mountWhenReady()
-            }
-        }
-
         // 繋ぎを外して降りる。ドメインの出し入れはこの束（アプリ本体）からしかできないので、
         // 外から叩ける口をここに開けておく
         if CommandLine.arguments.contains("--file-provider-stop") {
@@ -152,23 +83,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
-        // マウント先が決まっていなければ、まず設定を出す。初回はここに来る
-        if (!usesProvider && Settings.mountPoint.isEmpty) || CommandLine.arguments.contains("--settings") {
-            openSettings()
-        }
+        if CommandLine.arguments.contains("--settings") { openSettings() }
 
-        // クラウドのフォルダとして見せるなら、場所を借りる必要がない。すぐ繋ぐ
-        if usesProvider {
-            Provider.shared.start()
-            return
-        }
-
-        // 行き先が決まっていれば繋ぐ。設定を開いていても、繋がない理由にはならない。
-        // ここを飛ばしていたせいで、`--settings` 付きで起動すると繋がらなかった
-        guard !Settings.mountPoint.isEmpty else { return }
-
-        // 普段はメニューを触らずに繋がる。外付けがまだなら、繋がるまで待つ
-        mount.mountWhenReady()
+        // 置き場所を借りないので、待つものが無い。すぐ繋ぐ
+        provider.start()
     }
 
     /// 合図で止められたときも片付ける。
@@ -190,19 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var signalSources: [DispatchSourceSignal] = []
 
-    /// 繋がったまま終了すると、次に Finder から触ったときに固まる。降りる前に外す
-    func applicationWillTerminate(_ notification: Notification) {
-        // クラウドのフォルダは繋いだままでよい。次に起きたときも macOS が覚えている
-        guard !usesProvider else { return }
-        guard mount.state == .mounted else { return }
-        mount.unmount()
-
-        // 終了処理の中なので実行ループは回らない。外れるまでここで待つ
-        let deadline = Date().addingTimeInterval(15)
-        while Date() < deadline, Mounts.isMounted(Settings.mountPoint) {
-            Thread.sleep(forTimeInterval: 0.2)
-        }
-    }
+    /// 降りるときに外す必要はない。繋ぎは macOS が覚えていて、次に起きたら続きから使える
 
     // MARK: - メニュー
 
@@ -235,7 +141,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
-        if !usesProvider { mount.refresh() }
         refresh()
     }
 
@@ -243,16 +148,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refresh() {
         let state = self.state
-
-        // 繋がったところで、前回の歩き残しを片付けにいく。一周に何時間もかかるので、
-        // 終わる前に切れるのが普通。控えが無ければ何も起きない。
-        // クラウドのフォルダとして見せているときは、そもそも歩く必要がない
-        if !usesProvider, state == .mounted, lastState != .mounted {
-            FinderView.resumeSweep(Settings.mountPoint)
-        }
         lastState = state
 
-        statusItem.button?.image = Icon.image(for: state, reservingSpinner: isTransferring)
+        statusItem.button?.image = Icon.image(for: state)
         statusItem.button?.toolTip = "Gocci — \(label(for: state))"
 
         // 通知はアドホック署名では出せない（実測）。人の手が要る失敗は、
@@ -262,70 +160,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 状態は行の右端に出す。左の丸は色で、遠目にも接続の有無が分かるように
         titleItem.attributedTitle = titleText(for: state)
 
-        finderItem.isEnabled = state == .mounted
+        finderItem.isEnabled = state == .on
 
         switch state {
-        case .mounted:
+        case .on:
             toggleItem.title = L.disconnect
             toggleItem.isEnabled = true
-        case .unmounted, .waitingForDisk, .reconnecting, .failed:
-            // 待っている間も押せる。外付けを繋いだ直後に、5秒の見回りを待たず繋げるように
+        case .off, .failed:
             toggleItem.title = L.connect
-            toggleItem.isEnabled = !Settings.mountPoint.isEmpty
-        case .mounting, .unmounting:
-            toggleItem.title = state == .mounting ? L.mounting : L.unmounting
+            toggleItem.isEnabled = true
+        case .starting:
+            toggleItem.title = L.mounting
             toggleItem.isEnabled = false
         }
     }
 
-    /// 印の隣に輪を置く。項目は1つのままで、印の右に場所だけ空ける
-    private func buildSpinner() {
-        guard let button = statusItem.button else { return }
-
-        spinner.style = .spinning
-        spinner.controlSize = .small
-        spinner.isDisplayedWhenStopped = false
-        spinner.translatesAutoresizingMaskIntoConstraints = false
-        button.addSubview(spinner)
-
-        NSLayoutConstraint.activate([
-            spinner.widthAnchor.constraint(equalToConstant: Icon.spinnerSize),
-            spinner.heightAnchor.constraint(equalToConstant: Icon.spinnerSize),
-            spinner.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-            spinner.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -3),
-        ])
-    }
-
-    /// 取りに行っている間だけ輪を回す。
-    ///
-    /// 印そのものは変えない。状態（繋がっている・切れている）と、今取りに行っているかは
-    /// 別のことなので、同じ形に両方を持たせると読み取れなくなる
-    private func checkTransfers() {
-        guard !usesProvider, mount.state == .mounted else { return showSpinner(false) }
-
-        Rc.transferring { [weak self] count in
-            DispatchQueue.main.async { self?.showSpinner(count > 0) }
-        }
-    }
-
-    private func showSpinner(_ shown: Bool) {
-        guard shown != isTransferring else { return }
-        isTransferring = shown
-
-        if shown {
-            spinner.startAnimation(nil)
-        } else {
-            spinner.stopAnimation(nil)
-        }
-        // 幅は絵が持つ。ここでは絵を差し替えるだけにする
-        refresh()
-    }
 
     /// 失敗しているときだけ動く点滅。
     ///
     /// 通知はアドホック署名では出せない（`Notifications are not allowed for this application`）。
     /// 人の手が要る失敗に気付ける手立てが、印の色だけでは弱い
-    private func updateBlink(for state: MountState) {
+    private func updateBlink(for state: Provider.State) {
         let failed: Bool
         if case .failed = state { failed = true } else { failed = false }
 
@@ -346,7 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         blinkTimer = timer
     }
 
-    private func titleText(for state: MountState) -> NSAttributedString {
+    private func titleText(for state: Provider.State) -> NSAttributedString {
         let text = NSMutableAttributedString(
             string: "● ",
             attributes: [.foregroundColor: color(for: state), .font: NSFont.menuFont(ofSize: 13)])
@@ -364,23 +219,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return text
     }
 
-    private func label(for state: MountState) -> String {
+    private func label(for state: Provider.State) -> String {
         switch state {
-        case .mounted: return L.mounted
-        case .mounting: return L.mounting
-        case .unmounting: return L.unmounting
-        case .unmounted: return L.unmounted
-        case .waitingForDisk: return L.waitingForDisk
-        case .reconnecting: return L.reconnecting
+        case .on: return L.mounted
+        case .starting: return L.mounting
+        case .off: return L.unmounted
         case .failed(let reason): return "\(L.failed): \(reason)"
         }
     }
 
-    private func color(for state: MountState) -> NSColor {
+    private func color(for state: Provider.State) -> NSColor {
         switch state {
-        case .mounted: return .systemGreen
-        case .mounting, .unmounting, .waitingForDisk, .reconnecting: return .systemYellow
-        case .unmounted: return .tertiaryLabelColor
+        case .on: return .systemGreen
+        case .starting: return .systemYellow
+        case .off: return .tertiaryLabelColor
         case .failed: return .systemRed
         }
     }
@@ -395,41 +247,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ])
     }
 
-    /// 見せ方の切り替え。両方を同時に繋いだままにしない
-    private func switchStyle() {
-        if usesProvider {
-            if mount.state == .mounted { mount.unmount() }
-            Provider.shared.start()
-        } else {
-            Provider.shared.stop { [weak self] in
-                guard let self, !Settings.mountPoint.isEmpty else { return }
-                self.mount.mountWhenReady()
-            }
-        }
-    }
-
     // MARK: - 操作
 
     @objc private func toggleMount() {
-        guard usesProvider else { return mount.toggleByUser() }
-
-        if Provider.shared.state == .on {
-            Provider.shared.stop()
+        if provider.state == .on {
+            provider.stop()
         } else {
-            Provider.shared.start()
+            provider.start()
         }
     }
 
     @objc private func openInFinder() {
-        if usesProvider {
-            Provider.shared.visibleURL { url in
-                guard let url else { return }
-                NSWorkspace.shared.open(url)
-            }
-            return
+        provider.visibleURL { url in
+            guard let url else { return }
+            NSWorkspace.shared.open(url)
         }
-        guard !Settings.mountPoint.isEmpty else { return }
-        NSWorkspace.shared.open(URL(fileURLWithPath: Settings.mountPoint))
     }
 
     @objc private func openSettings() {

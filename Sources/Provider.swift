@@ -24,16 +24,6 @@ final class Provider {
         case failed(String)
     }
 
-    /// メニューや印は `MountState` で組んである。同じ言葉に直して渡す
-    var displayState: MountState {
-        switch state {
-        case .off: return .unmounted
-        case .starting: return .mounting
-        case .on: return .mounted
-        case .failed(let reason): return .failed(reason)
-        }
-    }
-
     private(set) var state: State = .off {
         didSet {
             guard state != oldValue else { return }
@@ -64,7 +54,7 @@ final class Provider {
         guard state == .off || isFailed(state) else { return }
         state = .starting
 
-        guard let path = MountController.rclonePath else {
+        guard let path = Rclone.path else {
             state = .failed("rclone が見つかりません")
             return
         }

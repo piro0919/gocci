@@ -25,7 +25,7 @@ enum Icon {
     ///
     /// 取りに行っている間は、右に輪のぶんの空きを足した絵を返す。項目を広げるだけでは、
     /// 絵が広がった真ん中に来て輪と重なる。空きは絵の側で持たせる
-    static func image(for state: MountState, reservingSpinner: Bool = false) -> NSImage {
+    static func image(for state: Provider.State, reservingSpinner: Bool = false) -> NSImage {
         let mark = Mark.image(height: height, style: style(for: state))
         guard reservingSpinner else { return mark }
 
@@ -39,11 +39,11 @@ enum Icon {
         return padded
     }
 
-    private static func style(for state: MountState) -> Mark.Style {
+    private static func style(for state: Provider.State) -> Mark.Style {
         switch state {
-        case .mounted: return .solid
-        case .mounting, .unmounting, .waitingForDisk, .reconnecting: return .dim
-        case .unmounted: return .outline
+        case .on: return .solid
+        case .starting: return .dim
+        case .off: return .outline
         case .failed: return .badged
         }
     }

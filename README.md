@@ -15,6 +15,24 @@ not show them unless asked.
 
 It does one thing: one Google account, one mount point, mounted at login.
 
+## Two ways to show the Drive
+
+Gocci can present the same Drive in either of two ways, and you pick which in
+Settings.
+
+**As a cloud folder** (default). Gocci tells macOS the contents live in the
+cloud, the same arrangement iCloud Drive uses. macOS then knows not to read a
+file just to draw its icon, so opening a folder downloads nothing. Thumbnails
+are requested through a channel of their own, and only the part of a file you
+actually read is fetched. It appears in the sidebar next to iCloud Drive;
+macOS decides where the data sits, so you do not choose a folder for it.
+
+**As a disk**. The original behaviour: Gocci runs `rclone nfsmount` and macOS
+mounts it wherever you point it, including an external disk. Finder treats it
+as an ordinary volume, which is why "Don't download when you open a folder"
+exists — it writes view settings into `.DS_Store` so Finder stops generating
+previews. Choose this when the mount has to live at a path you control.
+
 ## Requirements
 
 - Apple silicon, macOS 14 or later

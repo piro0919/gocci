@@ -62,7 +62,7 @@ enum RcloneConfig {
 
     /// 失敗したら nil。値そのものは記録に残さない
     private static func run(_ arguments: [String], timeout: TimeInterval = 30) -> String? {
-        guard let rclone = MountController.rclonePath else { return nil }
+        guard let rclone = Rclone.path else { return nil }
 
         let task = Process()
         task.executableURL = URL(fileURLWithPath: rclone)
