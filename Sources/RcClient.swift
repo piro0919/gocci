@@ -107,9 +107,13 @@ struct RcClient {
     /// 置けない。rclone に書かせると `operation not permitted`、いったん外へ落として
     /// から移すと、今度は移すところで断られる（どちらも 2026-08-17 実測）。
     ///
-    /// なので中身を配る口から流し込む。届いた端から書くので、大きくても手元に溜めない
+    /// なので中身を配る口から流し込む。届いた端から書くので、大きくても手元に溜めない。
+    ///
+    /// `progress` には届いた分を書き込む。Finder の円はこれで描かれるので、
+    /// 終わりに一度だけ埋めると、止まったまま急に満了する
     func download(
-        path: String, to destination: URL, completion: @escaping (Result<Void, Error>) -> Void
+        path: String, to destination: URL, reporting progress: Progress,
+        completion: @escaping (Result<Void, Error>) -> Void
     ) {
         let escaped =
             path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
@@ -123,22 +127,32 @@ struct RcClient {
         var request = URLRequest(url: url)
         request.timeoutInterval = 120
 
-        let sink = Sink(handle: handle, completion: completion)
+        let sink = Sink(handle: handle, progress: progress, completion: completion)
         let session = URLSession(configuration: .default, delegate: sink, delegateQueue: nil)
         sink.session = session
-        session.dataTask(with: request).resume()
+        let task = session.dataTask(with: request)
+
+        // 途中で止められたら、取りに行くのもやめる
+        progress.cancellationHandler = { task.cancel() }
+        task.resume()
     }
 
     /// 届いた端からファイルへ書く係。`URLSession` は受け取り手を強く持つので、
     /// 終わったら自分で session を畳まないと残り続ける
     private final class Sink: NSObject, URLSessionDataDelegate {
         private let handle: FileHandle
+        private let progress: Progress
         private let completion: (Result<Void, Error>) -> Void
         private var rejection: Error?
+        private var written: Int64 = 0
         var session: URLSession?
 
-        init(handle: FileHandle, completion: @escaping (Result<Void, Error>) -> Void) {
+        init(
+            handle: FileHandle, progress: Progress,
+            completion: @escaping (Result<Void, Error>) -> Void
+        ) {
             self.handle = handle
+            self.progress = progress
             self.completion = completion
         }
 
@@ -151,11 +165,23 @@ struct RcClient {
                 rejection = Failure.rejected("中身を配る口が \(code) を返しました")
                 return completionHandler(.cancel)
             }
+
+            // 相手が大きさを教えてくれるなら、そちらを使う。分からないままだと
+            // Finder は満了しない円を回し続ける
+            if http.expectedContentLength > 0 {
+                progress.totalUnitCount = http.expectedContentLength
+            }
             completionHandler(.allow)
         }
 
         func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-            do { try handle.write(contentsOf: data) } catch { rejection = error }
+            do {
+                try handle.write(contentsOf: data)
+                written += Int64(data.count)
+                progress.completedUnitCount = min(written, progress.totalUnitCount)
+            } catch {
+                rejection = error
+            }
         }
 
         func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
@@ -165,6 +191,7 @@ struct RcClient {
 
             if let rejection { return completion(.failure(rejection)) }
             if let error { return completion(.failure(error)) }
+            progress.completedUnitCount = progress.totalUnitCount
             completion(.success(()))
         }
     }

@@ -586,8 +586,12 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
             return progress
         }
 
-        client.download(path: item.path, to: destination) { result in
-            progress.completedUnitCount = 1
+        // 円の目盛りはバイト。1 のままだと、動かずに最後だけ埋まる
+        progress.totalUnitCount = max(item.bytes, 1)
+        progress.kind = .file
+        progress.fileOperationKind = .downloading
+
+        client.download(path: item.path, to: destination, reporting: progress) { result in
             switch result {
             case .failure(let error):
                 logger.error("取れなかった: \(error.localizedDescription, privacy: .public)")
