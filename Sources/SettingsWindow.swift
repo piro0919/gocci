@@ -11,6 +11,7 @@ final class SettingsWindowController: NSWindowController {
     private let clientSecretField = NSSecureTextField(string: "")
     private let launchCheckbox = NSButton(
         checkboxWithTitle: L.launchAtLogin, target: nil, action: nil)
+    private let evictButton = NSButton(title: L.evictDownloads, target: nil, action: nil)
     private let languagePopUp = NSPopUpButton()
     private let messageLabel = NSTextField(labelWithString: "")
     /// 一度でも開いたか。入力欄に今の値が入っているかの判断に使う
@@ -53,10 +54,14 @@ final class SettingsWindowController: NSWindowController {
         }
         languagePopUp.selectItem(at: Language.allCases.firstIndex(of: Settings.language) ?? 0)
 
-        messageLabel.textColor = .systemRed
+        messageLabel.textColor = .secondaryLabelColor
         messageLabel.font = .systemFont(ofSize: 11)
         // 文字が無いときは畳む。空のまま置くと、その行のぶんだけ間延びする
         messageLabel.isHidden = true
+
+        evictButton.bezelStyle = .rounded
+        evictButton.target = self
+        evictButton.action = #selector(evictDownloads)
 
         let updateButton = NSButton(
             title: L.checkForUpdates, target: self, action: #selector(checkForUpdates))
@@ -82,9 +87,11 @@ final class SettingsWindowController: NSWindowController {
             row(L.clientSecret, clientSecretField),
             links(),
             divider(),
+            aligned(evictButton),
+            divider(),
             row(L.language, languagePopUp),
             checkboxRow(launchCheckbox),
-            messageLabel,
+            aligned(messageLabel),
             buttons,
             aligned(about),
         ])
@@ -240,18 +247,16 @@ final class SettingsWindowController: NSWindowController {
             remote: Settings.remote, clientID: clientIDField.stringValue,
             clientSecret: clientSecretField.stringValue)
         {
-            report(failure)
+            report(failure, failed: true)
             return
         }
 
         report(L.reconnecting2)
-        messageLabel.textColor = .secondaryLabelColor
 
         RcloneConfig.reconnect(remote: Settings.remote) { [weak self] failure in
             guard let self else { return }
             if let failure {
-                self.messageLabel.textColor = .systemRed
-                self.report(failure)
+                self.report(failure, failed: true)
                 return
             }
             self.report(L.reconnected)
@@ -285,6 +290,21 @@ final class SettingsWindowController: NSWindowController {
         return aligned(label)
     }
 
+    /// 手元に降りてきた実体を捨てる。Drive のファイルはそのまま残る
+    @objc private func evictDownloads() {
+        evictButton.isEnabled = false
+        report("")
+        Provider.shared.evictDownloads { [weak self] failure in
+            guard let self else { return }
+            self.evictButton.isEnabled = true
+            if let failure {
+                self.report(L.evictFailed(failure), failed: true)
+            } else {
+                self.report(L.evictedDownloads)
+            }
+        }
+    }
+
     @objc private func checkForUpdates() {
         Updater.shared.checkNow()
     }
@@ -295,7 +315,8 @@ final class SettingsWindowController: NSWindowController {
         Settings.language = Language.allCases[index]
     }
 
-    private func report(_ text: String) {
+    private func report(_ text: String, failed: Bool = false) {
+        messageLabel.textColor = failed ? .systemRed : .secondaryLabelColor
         messageLabel.stringValue = text
         messageLabel.isHidden = text.isEmpty
     }

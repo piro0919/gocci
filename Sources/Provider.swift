@@ -143,6 +143,40 @@ final class Provider {
         }
     }
 
+    /// 手元に降りてきた実体を、まとめて捨てる。Drive のファイルはそのまま残る。
+    ///
+    /// 根に頼むと、その下は再帰的に片付く（`NSFileProviderManager.h` 470-471行）。
+    ///
+    /// Finder の右クリックにも「ダウンロードを削除」があるはずだが、こちらの拡張では
+    /// 出ていない。理由は未確認。出ないままだと手元を空ける手立てが無くなるので、
+    /// アプリ側にも口を残す
+    func evictDownloads(completion: @escaping (String?) -> Void) {
+        let domain = NSFileProviderDomain(identifier: Self.domainIdentifier, displayName: "Gocci")
+        guard let manager = NSFileProviderManager(for: domain) else {
+            return completion("繋がっていません")
+        }
+
+        manager.evictItem(identifier: .rootContainer) { error in
+            Task { @MainActor in
+                // 消せないものが混じっていると `-2006` が返るが、消せた分は消えている。
+                // 書き込みの途中や、まだ上げ終えていないものがそれにあたる。
+                // 全部が失敗したかのように見せると、実際に空いたことが伝わらない
+                if let error, (error as NSError).code != NSFileProviderError.nonEvictableChildren.rawValue {
+                    providerLogger.error(
+                        "手元から消せなかった: \(String(describing: error), privacy: .public)")
+                    completion(error.localizedDescription)
+                    return
+                }
+                if error != nil {
+                    providerLogger.info("手元のダウンロードを空にした（消せないものは残した）")
+                } else {
+                    providerLogger.info("手元のダウンロードを空にした")
+                }
+                completion(nil)
+            }
+        }
+    }
+
     // MARK: - Drive 側の変化
 
     private var watchTimer: Timer?

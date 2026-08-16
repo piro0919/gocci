@@ -72,7 +72,12 @@ final class Item: NSObject, NSFileProviderItem {
                 .allowsRenaming, .allowsReparenting,
             ]
         }
-        return [.allowsReading, .allowsWriting, .allowsDeleting, .allowsRenaming, .allowsReparenting]
+        // `allowsEvicting` は macOS 13 で非推奨になったが、Finder の「ダウンロードを削除」は
+        // まだこれを見ている（2026-08-16 実測。付けないと右クリックに項目が出ない）
+        return [
+            .allowsReading, .allowsWriting, .allowsDeleting, .allowsRenaming, .allowsReparenting,
+            .allowsEvicting,
+        ]
     }
 
     var itemVersion: NSFileProviderItemVersion {
@@ -119,6 +124,8 @@ final class Trash: NSObject, NSFileProviderItem {
 final class Ledger {
     static let shared = Ledger()
     private var entries: [String: Item] = [:]
+    /// 消したもの。混ぜるときに蘇らせないための覚え
+    private var forgotten = Set<String>()
     private let lock = NSLock()
 
     private var url: URL? {
@@ -200,34 +207,51 @@ final class Ledger {
     func forget(_ identifier: NSFileProviderItemIdentifier) {
         lock.lock()
         entries.removeValue(forKey: identifier.rawValue)
+        forgotten.insert(identifier.rawValue)
         lock.unlock()
         save()
     }
 
     // MARK: - 手元に残す
 
+    /// 書く前に、ディスクにあるものと混ぜる。
+    ///
+    /// 拡張は同時に何本も起きる。それぞれが自分の覚えだけを書き出すと、後から書いたほうが
+    /// 先の記録を消す。実際、1000件あった控えが19件まで縮み、控えから落ちたファイルは
+    /// Finder から見えなくなった。Drive には残っているのに消えたように見える
+    /// （2026-08-16 実測）。
+    ///
+    /// 消すときは `forget` が明示的に落とすので、混ぜても消えたものが蘇ることはない
     private func save() {
         guard let url else { return }
 
         lock.lock()
-        let payload = entries.mapValues { item in
+        let mine = entries.mapValues { item in
             [
                 "path": item.path, "dir": item.isDirectory, "bytes": item.bytes,
                 "modified": item.modified.timeIntervalSince1970,
             ] as [String: Any]
         }
+        let dropped = forgotten
         lock.unlock()
 
-        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        var merged = diskContents()
+        for (id, value) in mine { merged[id] = value }
+        for id in dropped { merged.removeValue(forKey: id) }
+
+        guard let data = try? JSONSerialization.data(withJSONObject: merged) else { return }
         try? data.write(to: url, options: .atomic)
     }
 
-    private func load() {
+    private func diskContents() -> [String: [String: Any]] {
         guard let url, let data = try? Data(contentsOf: url),
             let payload = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]]
-        else { return }
+        else { return [:] }
+        return payload
+    }
 
-        for (id, raw) in payload {
+    private func load() {
+        for (id, raw) in diskContents() {
             guard let path = raw["path"] as? String else { continue }
             entries[id] = Item(
                 id: id, path: path, isDirectory: (raw["dir"] as? Bool) ?? false,

@@ -61,6 +61,11 @@ enum L {
         t("ブラウザで認証してください…", "Finish the sign-in in your browser…")
     }
     static var reconnected: String { t("認証し直しました", "Re-authenticated") }
+    static var evictDownloads: String { t("ダウンロードを空にする", "Remove Downloads") }
+    static var evictedDownloads: String { t("空にしました", "Downloads removed") }
+    static func evictFailed(_ reason: String) -> String {
+        t("空にできませんでした: \(reason)", "Could not remove them: \(reason)")
+    }
     static var language: String { t("言語", "Language") }
     static var checkForUpdates: String { t("更新を確認", "Check for Updates") }
     static func launchToggleFailed(_ reason: String) -> String {
