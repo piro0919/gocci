@@ -1,12 +1,14 @@
 # Gocci
 
-A tiny macOS menu bar app that puts **Google Drive in Finder** without macFUSE —
-and without downloading a folder just because you opened it.
+A tiny macOS menu bar app that puts **Google Drive in Finder**, keeps the
+downloads **on whichever disk you choose — an external one included**, and never
+pulls a folder down just because you opened it.
 
-The official Google Drive app works, but it hides shared items you never asked
-for and gives you no say in what gets downloaded. Mountain Duck and CloudMounter
-both cost money. Gocci does one thing: one Google account, in Finder, connected
-at login.
+The official Google Drive app cannot choose where it keeps things: it fills your
+startup disk. Mountain Duck lands in `~/Library/CloudStorage` on macOS whatever
+you configure. CloudMounter can use an external disk but costs money. Gocci does
+one thing: one Google account, in Finder, on the disk you picked, connected at
+login.
 
 ## How it works
 
@@ -26,8 +28,9 @@ Underneath, rclone talks to Drive. It runs without mounting anything: Gocci
 starts `rclone rcd`, asks it for listings over HTTP, and hands the answers to
 Finder. Nothing is installed into the kernel, nothing needs approval, no reboot.
 
-Drive appears in the Finder sidebar next to iCloud Drive. macOS decides where
-the data physically sits, so there is no mount point to choose.
+Drive appears in the Finder sidebar next to iCloud Drive. **Downloads can live on
+an external disk** — pick one under *Stored on* in Settings, and what you download
+is kept there instead of your startup disk. That needs macOS 15 or later.
 
 ## Requirements
 
@@ -67,14 +70,16 @@ you already have.
 
 | Item | Notes |
 | --- | --- |
+| Stored on | Which disk keeps what you download. An external disk needs macOS 15 |
 | Client ID / secret | Written straight into your rclone remote |
 | Account | Only shown when `rclone config` holds more than one Drive remote |
 | Language | Japanese / English, defaults to the system |
 | Launch at login | Connects as soon as you log in |
 
-There is nothing here about where files are kept or how much space they may
-take. macOS owns that now: see **System Settings → General → Storage** to
-manage it, or right-click a file in Finder and choose *Remove Download*.
+There is nothing here about how much space downloads may take. macOS owns that:
+right-click a file in Finder and choose *Remove Download*, or use **Remove
+Downloads** in Settings to clear the lot. Changing *Stored on* reconnects the
+Drive, and anything already downloaded is dropped.
 
 ## What the menu shows
 
@@ -135,11 +140,11 @@ dropped, and why.
 
 ## Notes
 
-- Earlier versions mounted the Drive as a disk through `rclone nfsmount`, which
-  let you put it on an external disk. That is gone. Finder treated it as an
-  ordinary volume and read files just to draw icons, and the workaround for that
-  — writing view settings into `.DS_Store` across the whole Drive — caused more
-  trouble than the problem it solved
+- Earlier versions mounted the Drive as a disk through `rclone nfsmount`. That is
+  gone. Finder treated it as an ordinary volume and read files just to draw icons,
+  and the workaround for that — writing view settings into `.DS_Store` across the
+  whole Drive — caused more trouble than the problem it solved. Choosing where the
+  downloads live survived the change; see *Stored on* in Settings
 - If you use a menu bar manager such as Ice, a newly added item starts out in
   the hidden section
 
