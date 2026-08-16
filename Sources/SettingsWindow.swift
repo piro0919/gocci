@@ -14,9 +14,15 @@ final class SettingsWindowController: NSWindowController {
     private let evictButton = NSButton(title: L.evictDownloads, target: nil, action: nil)
     private let volumeLabel = NSTextField(labelWithString: "")
     private let languagePopUp = NSPopUpButton()
+    /// 報告は、押したものの真下に出す。離れた場所に一つだけ置くと、
+    /// どの操作の結果なのか読み取れない
     private let messageLabel = NSTextField(labelWithString: "")
     /// 文字が無いときは行ごと畳む。中身だけ隠しても、包んでいる行が場所を取り続ける
     private lazy var messageRow: NSView = aligned(messageLabel)
+    private let evictMessageLabel = NSTextField(labelWithString: "")
+    private lazy var evictMessageRow: NSView = aligned(evictMessageLabel)
+    private let storageMessageLabel = NSTextField(labelWithString: "")
+    private lazy var storageMessageRow: NSView = aligned(storageMessageLabel)
     /// 一度でも開いたか。入力欄に今の値が入っているかの判断に使う
     private var hasShown = false
 
@@ -62,6 +68,14 @@ final class SettingsWindowController: NSWindowController {
         // 文字が無いときは畳む。空のまま置くと、その行のぶんだけ間延びする
         messageLabel.isHidden = true
         messageRow.isHidden = true
+        evictMessageLabel.font = .systemFont(ofSize: 11)
+        evictMessageLabel.textColor = .secondaryLabelColor
+        evictMessageLabel.isHidden = true
+        evictMessageRow.isHidden = true
+        storageMessageLabel.font = .systemFont(ofSize: 11)
+        storageMessageLabel.textColor = .secondaryLabelColor
+        storageMessageLabel.isHidden = true
+        storageMessageRow.isHidden = true
 
         evictButton.bezelStyle = .rounded
         evictButton.target = self
@@ -94,12 +108,14 @@ final class SettingsWindowController: NSWindowController {
 
         let stack = NSStackView(views: rows + [
             row(L.storage, volumeLabel, chooseVolume),
+            storageMessageRow,
             divider(),
             row(L.clientID, clientIDField),
             row(L.clientSecret, clientSecretField),
             links(),
             divider(),
             aligned(evictButton),
+            evictMessageRow,
             divider(),
             row(L.language, languagePopUp),
             checkboxRow(launchCheckbox),
@@ -305,7 +321,9 @@ final class SettingsWindowController: NSWindowController {
 
     /// 置き場所を選ぶ。ボリュームそのものを指すので、フォルダの中までは選ばせない
     @objc private func chooseVolume() {
-        guard Settings.canUseExternalVolume else { return report(L.storageNeedsSequoia, failed: true) }
+        guard Settings.canUseExternalVolume else {
+            return reportStorage(L.storageNeedsSequoia, failed: true)
+        }
 
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -319,7 +337,7 @@ final class SettingsWindowController: NSWindowController {
         // 選ばれたのがボリュームの根でなくても、そのボリュームに置かれる
         Settings.volume = url.path
         showVolume()
-        report(L.storageChanged)
+        reportStorage(L.storageChanged)
     }
 
     private func showVolume() {
@@ -330,15 +348,12 @@ final class SettingsWindowController: NSWindowController {
     /// 手元に降りてきた実体を捨てる。Drive のファイルはそのまま残る
     @objc private func evictDownloads() {
         evictButton.isEnabled = false
-        report("")
+        reportEviction("")
         Provider.shared.evictDownloads { [weak self] failure in
             guard let self else { return }
             self.evictButton.isEnabled = true
-            if let failure {
-                self.report(L.evictFailed(failure), failed: true)
-            } else {
-                self.report(L.evictedDownloads)
-            }
+            self.reportEviction(
+                failure.map { L.evictFailed($0) } ?? L.evictedDownloads, failed: failure != nil)
         }
     }
 
@@ -350,6 +365,22 @@ final class SettingsWindowController: NSWindowController {
         let index = languagePopUp.indexOfSelectedItem
         guard Language.allCases.indices.contains(index) else { return }
         Settings.language = Language.allCases[index]
+    }
+
+    /// 置き場所を変えたときの知らせ。その行の真下に出す
+    private func reportStorage(_ text: String, failed: Bool = false) {
+        storageMessageLabel.textColor = failed ? .systemRed : .secondaryLabelColor
+        storageMessageLabel.stringValue = text
+        storageMessageLabel.isHidden = text.isEmpty
+        storageMessageRow.isHidden = text.isEmpty
+    }
+
+    /// 「ダウンロードを空にする」の結果。そのボタンの真下に出す
+    private func reportEviction(_ text: String, failed: Bool = false) {
+        evictMessageLabel.textColor = failed ? .systemRed : .secondaryLabelColor
+        evictMessageLabel.stringValue = text
+        evictMessageLabel.isHidden = text.isEmpty
+        evictMessageRow.isHidden = text.isEmpty
     }
 
     private func report(_ text: String, failed: Bool = false) {
