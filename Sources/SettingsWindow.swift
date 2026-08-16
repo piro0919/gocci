@@ -12,6 +12,8 @@ final class SettingsWindowController: NSWindowController {
     private let launchCheckbox = NSButton(
         checkboxWithTitle: L.launchAtLogin, target: nil, action: nil)
     private let evictButton = NSButton(title: L.evictDownloads, target: nil, action: nil)
+    /// 押す前に、何がどれだけ消えるのかを出す
+    private let downloadedLabel = NSTextField(labelWithString: "")
     private let volumeLabel = NSTextField(labelWithString: "")
     private let languagePopUp = NSPopUpButton()
     /// 報告は、押したものの真下に出す。離れた場所に一つだけ置くと、
@@ -83,6 +85,9 @@ final class SettingsWindowController: NSWindowController {
 
         volumeLabel.font = .systemFont(ofSize: 13)
 
+        downloadedLabel.font = .systemFont(ofSize: 11)
+        downloadedLabel.textColor = .secondaryLabelColor
+
         let updateButton = NSButton(
             title: L.checkForUpdates, target: self, action: #selector(checkForUpdates))
         updateButton.bezelStyle = .rounded
@@ -114,7 +119,7 @@ final class SettingsWindowController: NSWindowController {
             row(L.clientSecret, clientSecretField),
             links(),
             divider(),
-            aligned(evictButton),
+            aligned(evictButton, downloadedLabel),
             evictMessageRow,
             divider(),
             row(L.language, languagePopUp),
@@ -189,6 +194,7 @@ final class SettingsWindowController: NSWindowController {
         clientSecretField.stringValue = credentials["client_secret"] ?? ""
         launchCheckbox.state = Settings.launchesAtLogin ? .on : .off
         showVolume()
+        showDownloaded()
         report("")
         hasShown = true
 
@@ -251,11 +257,11 @@ final class SettingsWindowController: NSWindowController {
     }
 
     /// 見出しのぶんだけ空けて、入力欄の列に揃える
-    private func aligned(_ view: NSView) -> NSView {
+    private func aligned(_ views: NSView...) -> NSView {
         let spacer = NSView()
         spacer.widthAnchor.constraint(equalToConstant: Self.labelWidth).isActive = true
 
-        let stack = NSStackView(views: [spacer, view])
+        let stack = NSStackView(views: [spacer] + views)
         stack.orientation = .horizontal
         stack.spacing = 10
         return stack
@@ -354,6 +360,27 @@ final class SettingsWindowController: NSWindowController {
             self.evictButton.isEnabled = true
             self.reportEviction(
                 failure.map { L.evictFailed($0) } ?? L.evictedDownloads, failed: failure != nil)
+            self.showDownloaded()
+        }
+    }
+
+    /// 手元にどれだけ降りているかを数えて出す。macOS が持っている台帳を読むだけなので
+    /// Drive には行かないが、件数が多いと少し待つ
+    private func showDownloaded() {
+        downloadedLabel.stringValue = L.downloadedCounting
+        Provider.shared.downloadedSize { [weak self] bytes, count in
+            guard let self else { return }
+            self.evictButton.isEnabled = count > 0
+            guard count > 0 else {
+                self.downloadedLabel.stringValue = L.downloadedNothing
+                return
+            }
+            // 既定だと 0 が「Zero KB」になる。数字で出したい
+            let formatter = ByteCountFormatter()
+            formatter.countStyle = .file
+            formatter.allowsNonnumericFormatting = false
+            let size = formatter.string(fromByteCount: bytes)
+            self.downloadedLabel.stringValue = L.downloaded(size, count: count)
         }
     }
 

@@ -382,6 +382,19 @@ final class Provider {
     /// Finder の右クリックにも「ダウンロードを削除」があるはずだが、こちらの拡張では
     /// 出ていない。理由は未確認。出ないままだと手元を空ける手立てが無くなるので、
     /// アプリ側にも口を残す
+    /// 手元に降りている量。空にする前に、何が消えるのかを見せるために使う
+    func downloadedSize(completion: @escaping (Int64, Int) -> Void) {
+        currentDomain { domain in
+            guard let domain else {
+                Task { @MainActor in completion(0, 0) }
+                return
+            }
+            Materialized.total(in: domain) { bytes, count in
+                Task { @MainActor in completion(bytes, count) }
+            }
+        }
+    }
+
     func evictDownloads(completion: @escaping (String?) -> Void) {
         currentDomain { domain in
             guard let domain, let manager = NSFileProviderManager(for: domain) else {

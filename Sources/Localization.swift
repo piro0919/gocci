@@ -71,6 +71,12 @@ enum L {
         t("繋ぎ直します。降りてきていたものは消えます", "Reconnecting. Anything downloaded is dropped")
     }
     static var evictDownloads: String { t("ダウンロードを空にする", "Remove Downloads") }
+    /// 空にする前に、何がどれだけ消えるのかを出す
+    static func downloaded(_ size: String, count: Int) -> String {
+        t("手元に \(size)（\(count) 件）", "\(size) here (\(count) files)")
+    }
+    static var downloadedNothing: String { t("手元には何もありません", "Nothing is here yet") }
+    static var downloadedCounting: String { t("数えています…", "Counting…") }
     static var evictedDownloads: String { t("空にしました", "Downloads removed") }
     static func evictFailed(_ reason: String) -> String {
         t("空にできませんでした: \(reason)", "Could not remove them: \(reason)")

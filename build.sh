@@ -62,6 +62,7 @@ swiftc \
   Sources/Rclone.swift Sources/RcloneConfig.swift Sources/Rc.swift \
   Sources/Mark.swift Sources/Icon.swift Sources/Updater.swift \
   Sources/RcEndpoint.swift Sources/RcClient.swift Sources/Provider.swift \
+  Sources/Materialized.swift \
   Sources/SettingsWindow.swift Sources/main.swift
 
 # Drive を「クラウドのフォルダ」として見せる拡張。
