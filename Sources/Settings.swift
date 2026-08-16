@@ -62,6 +62,7 @@ enum Settings {
     private static let remoteKey = "remote"
     private static let fetchWholeKey = "fetchWholeFile"
     private static let finderSettingsKey = "keepFinderSettings"
+    private static let fileProviderKey = "useFileProvider"
     private static let cacheMaxAgeKey = "cacheMaxAge"
     private static let cacheMaxSizeKey = "cacheMaxSize"
     private static let languageKey = "language"
@@ -296,6 +297,21 @@ enum Settings {
         get { (UserDefaults.standard.object(forKey: finderSettingsKey) as? Bool) ?? true }
         set {
             UserDefaults.standard.set(newValue, forKey: finderSettingsKey)
+            NotificationCenter.default.post(name: .settingsChanged, object: nil)
+        }
+    }
+
+    // MARK: - 見せ方
+
+    /// Drive を「クラウドのフォルダ」として見せるか。
+    ///
+    /// 切ると、これまでどおり場所を借りてマウントを張る。両者は見え方から違う——
+    /// こちらは `~/Library/CloudStorage` に現れ、あちらは指定した場所に現れる。
+    /// 切り替えは繋ぎ直しを伴うので、途中の書き込みが無いときに変える
+    static var usesFileProvider: Bool {
+        get { (UserDefaults.standard.object(forKey: fileProviderKey) as? Bool) ?? true }
+        set {
+            UserDefaults.standard.set(newValue, forKey: fileProviderKey)
             NotificationCenter.default.post(name: .settingsChanged, object: nil)
         }
     }

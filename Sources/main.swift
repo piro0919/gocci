@@ -17,6 +17,7 @@ enum Gocci {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let menu = NSMenu()
@@ -45,6 +46,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var mount: MountController { MountController.shared }
 
+    /// 今どちらの見せ方で繋いでいるか。設定で切り替える
+    private var usesProvider: Bool { Settings.usesFileProvider }
+    /// 切り替わったことに気づくために、前の値を控えておく
+    private var lastUsesProvider = Settings.usesFileProvider
+
+    /// 印にもメニューにも、こちらの言葉で渡す
+    private var state: MountState {
+        usesProvider ? Provider.shared.displayState : mount.state
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
 
@@ -59,9 +70,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         NotificationCenter.default.addObserver(
+            forName: .providerStateChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.refresh()
+        }
+
+        NotificationCenter.default.addObserver(
             forName: .settingsChanged, object: nil, queue: .main
         ) { [weak self] _ in
             guard let self else { return }
+
+            // 見せ方が変わった。片方を外してから、もう片方で繋ぎ直す
+            if self.lastUsesProvider != Settings.usesFileProvider {
+                self.lastUsesProvider = Settings.usesFileProvider
+                self.switchStyle()
+            }
+
             if self.builtLanguage != Language.resolved {
                 self.builtLanguage = Language.resolved
                 let wasVisible = self.settingsWindow.window?.isVisible ?? false
@@ -116,18 +140,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             forName: NSWorkspace.didMountNotification, object: nil, queue: .main
         ) { [weak self] _ in
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                self?.mount.mountWhenReady()
+                guard let self, !self.usesProvider else { return }
+                self.mount.mountWhenReady()
             }
         }
 
-        // 作り直しの最中。`--file-provider` を付けたときだけ、Drive を「クラウドのフォルダ」
-        // として繋ぐ。普段の道（NFS のマウント）はそのまま残してある
-        if CommandLine.arguments.contains("--file-provider") {
-            Provider.shared.start()
-            return
-        }
-
-        // 繋ぎを外す。ドメインの出し入れはこの束（アプリ本体）からしかできないので、
+        // 繋ぎを外して降りる。ドメインの出し入れはこの束（アプリ本体）からしかできないので、
         // 外から叩ける口をここに開けておく
         if CommandLine.arguments.contains("--file-provider-stop") {
             Provider.shared.stop { NSApp.terminate(nil) }
@@ -135,8 +153,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         // マウント先が決まっていなければ、まず設定を出す。初回はここに来る
-        if Settings.mountPoint.isEmpty || CommandLine.arguments.contains("--settings") {
+        if (!usesProvider && Settings.mountPoint.isEmpty) || CommandLine.arguments.contains("--settings") {
             openSettings()
+        }
+
+        // クラウドのフォルダとして見せるなら、場所を借りる必要がない。すぐ繋ぐ
+        if usesProvider {
+            Provider.shared.start()
+            return
         }
 
         // 行き先が決まっていれば繋ぐ。設定を開いていても、繋がない理由にはならない。
@@ -168,6 +192,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// 繋がったまま終了すると、次に Finder から触ったときに固まる。降りる前に外す
     func applicationWillTerminate(_ notification: Notification) {
+        // クラウドのフォルダは繋いだままでよい。次に起きたときも macOS が覚えている
+        guard !usesProvider else { return }
         guard mount.state == .mounted else { return }
         mount.unmount()
 
@@ -209,19 +235,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
-        mount.refresh()
+        if !usesProvider { mount.refresh() }
         refresh()
-
     }
 
     // MARK: - 表示の更新
 
     private func refresh() {
-        let state = mount.state
+        let state = self.state
 
         // 繋がったところで、前回の歩き残しを片付けにいく。一周に何時間もかかるので、
-        // 終わる前に切れるのが普通。控えが無ければ何も起きない
-        if state == .mounted, lastState != .mounted {
+        // 終わる前に切れるのが普通。控えが無ければ何も起きない。
+        // クラウドのフォルダとして見せているときは、そもそも歩く必要がない
+        if !usesProvider, state == .mounted, lastState != .mounted {
             FinderView.resumeSweep(Settings.mountPoint)
         }
         lastState = state
@@ -275,7 +301,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 印そのものは変えない。状態（繋がっている・切れている）と、今取りに行っているかは
     /// 別のことなので、同じ形に両方を持たせると読み取れなくなる
     private func checkTransfers() {
-        guard mount.state == .mounted else { return showSpinner(false) }
+        guard !usesProvider, mount.state == .mounted else { return showSpinner(false) }
 
         Rc.transferring { [weak self] count in
             DispatchQueue.main.async { self?.showSpinner(count > 0) }
@@ -369,13 +395,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ])
     }
 
+    /// 見せ方の切り替え。両方を同時に繋いだままにしない
+    private func switchStyle() {
+        if usesProvider {
+            if mount.state == .mounted { mount.unmount() }
+            Provider.shared.start()
+        } else {
+            Provider.shared.stop { [weak self] in
+                guard let self, !Settings.mountPoint.isEmpty else { return }
+                self.mount.mountWhenReady()
+            }
+        }
+    }
+
     // MARK: - 操作
 
     @objc private func toggleMount() {
-        mount.toggleByUser()
+        guard usesProvider else { return mount.toggleByUser() }
+
+        if Provider.shared.state == .on {
+            Provider.shared.stop()
+        } else {
+            Provider.shared.start()
+        }
     }
 
     @objc private func openInFinder() {
+        if usesProvider {
+            Provider.shared.visibleURL { url in
+                guard let url else { return }
+                NSWorkspace.shared.open(url)
+            }
+            return
+        }
         guard !Settings.mountPoint.isEmpty else { return }
         NSWorkspace.shared.open(URL(fileURLWithPath: Settings.mountPoint))
     }

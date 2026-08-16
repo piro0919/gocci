@@ -24,6 +24,16 @@ final class Provider {
         case failed(String)
     }
 
+    /// メニューや印は `MountState` で組んである。同じ言葉に直して渡す
+    var displayState: MountState {
+        switch state {
+        case .off: return .unmounted
+        case .starting: return .mounting
+        case .on: return .mounted
+        case .failed(let reason): return .failed(reason)
+        }
+    }
+
     private(set) var state: State = .off {
         didSet {
             guard state != oldValue else { return }
@@ -34,6 +44,17 @@ final class Provider {
 
     /// 口だけ開けた rclone。マウントは張らない
     private var rclone: Process?
+
+    /// 人から見える場所。macOS が決めるので、こちらでは訊くだけ
+    func visibleURL(completion: @escaping (URL?) -> Void) {
+        let domain = NSFileProviderDomain(identifier: Self.domainIdentifier, displayName: "Gocci")
+        guard let manager = NSFileProviderManager(for: domain) else { return completion(nil) }
+
+        Task {
+            let url = try? await manager.getUserVisibleURL(for: .rootContainer)
+            await MainActor.run { completion(url) }
+        }
+    }
 
     private static let domainIdentifier = NSFileProviderDomainIdentifier("gocci")
 

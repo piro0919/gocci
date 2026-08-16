@@ -16,6 +16,8 @@ final class SettingsWindowController: NSWindowController {
         checkboxWithTitle: L.launchAtLogin, target: nil, action: nil)
     private let finderSettingsCheckbox = NSButton(
         checkboxWithTitle: L.keepFinderSettings, target: nil, action: nil)
+    private let fileProviderCheckbox = NSButton(
+        checkboxWithTitle: L.useFileProvider, target: nil, action: nil)
     private let languagePopUp = NSPopUpButton()
     private let freeSpaceLabel = NSTextField(labelWithString: "")
     private let usageLabel = NSTextField(labelWithString: "")
@@ -76,6 +78,8 @@ final class SettingsWindowController: NSWindowController {
 
         finderSettingsCheckbox.target = self
         finderSettingsCheckbox.action = #selector(toggleFinderSettings)
+        fileProviderCheckbox.target = self
+        fileProviderCheckbox.action = #selector(toggleFileProvider)
 
         languagePopUp.target = self
         languagePopUp.action = #selector(changeLanguage)
@@ -120,6 +124,8 @@ final class SettingsWindowController: NSWindowController {
             row(L.cacheMaxSize, limitPopUp),
             aligned(freeSpaceLabel),
             cacheRow(),
+            checkboxRow(fileProviderCheckbox),
+            hint(L.useFileProviderHint),
             checkboxRow(finderSettingsCheckbox),
             hint(L.keepFinderSettingsHint),
             divider(),
@@ -209,6 +215,9 @@ final class SettingsWindowController: NSWindowController {
         clientSecretField.stringValue = credentials["client_secret"] ?? ""
         launchCheckbox.state = Settings.launchesAtLogin ? .on : .off
         finderSettingsCheckbox.state = Settings.keepsFinderSettings ? .on : .off
+        fileProviderCheckbox.state = Settings.usesFileProvider ? .on : .off
+        // 落ちてこないのはクラウドのフォルダでは当たり前なので、そちらの設定は隠す
+        updateFinderSettingsVisibility()
         report("")
         hasShown = true
 
@@ -340,6 +349,20 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func toggleFinderSettings() {
         Settings.keepsFinderSettings = finderSettingsCheckbox.state == .on
+    }
+
+    /// 見せ方を切り替える。繋ぎ直しになるので、押した人には結果を出す
+    @objc private func toggleFileProvider() {
+        Settings.usesFileProvider = fileProviderCheckbox.state == .on
+        updateFinderSettingsVisibility()
+        report(L.reconnecting2)
+    }
+
+    /// クラウドのフォルダとして見せているなら、`.DS_Store` の設定は出番がない
+    private func updateFinderSettingsVisibility() {
+        let showing = !Settings.usesFileProvider
+        finderSettingsCheckbox.isHidden = !showing
+        finderSettingsCheckbox.superview?.isHidden = !showing
     }
 
     /// client_id を取りに行くための入口と、書き込みの実行

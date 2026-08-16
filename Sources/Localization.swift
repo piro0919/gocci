@@ -120,6 +120,16 @@ enum L {
         t("ブラウザで認証してください…", "Finish the sign-in in your browser…")
     }
     static var reconnected: String { t("認証し直しました", "Re-authenticated") }
+    static var useFileProvider: String {
+        t("クラウドのフォルダとして見せる", "Show as a Cloud Folder")
+    }
+    static var useFileProviderHint: String {
+        t(
+            "macOS に「中身はクラウドにある」と伝えます。フォルダを開いても中身は落ちてこず、"
+                + "場所は「iCloud Drive」などと同じ並びに出ます。切ると、指定した場所にディスクとして繋ぎます",
+            "Tells macOS the contents live in the cloud. Opening a folder downloads nothing, and it "
+                + "appears alongside iCloud Drive. Turn it off to mount as a disk at a folder you choose")
+    }
     static var keepFinderSettings: String {
         t("フォルダを開いてもダウンロードしない", "Don't Download When You Open a Folder")
     }
