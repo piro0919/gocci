@@ -39,6 +39,8 @@ final class Provider {
     private static let builtInIdentifier = NSFileProviderDomainIdentifier("gocci")
     /// こちらの持ち物だと見分けるための印。外付けの識別子は毎回変わる
     private static let mark = "io.kkweb.gocci"
+    /// 選んだ場所に置く入り口の名前
+    private static let entranceName = "GoogleDrive"
 
     /// 今ある繋ぎを探す
     private func currentDomain(completion: @escaping (NSFileProviderDomain?) -> Void) {
@@ -60,7 +62,7 @@ final class Provider {
     func entranceURL(completion: @escaping (URL?) -> Void) {
         let volume = Settings.volume
         if !volume.isEmpty {
-            let link = URL(fileURLWithPath: volume).appendingPathComponent("Gocci")
+            let link = URL(fileURLWithPath: volume).appendingPathComponent(Self.entranceName)
             if FileManager.default.fileExists(atPath: link.path) {
                 return completion(link)
             }
@@ -251,17 +253,20 @@ final class Provider {
     }
 
     /// 断られたら少し置いて試し直す。後片付けが終わるまでは `513` が返り続ける
-    /// 外付けの根に入り口を置く。
+    /// 選んだ場所に入り口を置く。
     ///
-    /// 外付けに置くと、macOS は `\(ボリューム)/.CloudStorage/Data/Gocci-Gocci` を
-    /// 「人から見える場所」にする。隠しフォルダの中なので、外付けを開いても見えない。
-    /// 場所を選んだ人からすれば、そこに現れないのは繋がっていないのと同じなので、
-    /// 根から辿れるようにしておく
+    /// 中身をそこへ直に展開することはできない。置き場所に渡す URL は「どのボリュームか」を
+    /// 指すためのもので、そのボリュームのどこに置くかには影響しない
+    /// （`NSFileProviderDomain.h` 144-145行）。macOS は必ず
+    /// `\(ボリューム)/.CloudStorage/Data/…` に置く。そこは隠しフォルダの中で、
+    /// 外付けを開いても見えない。
+    ///
+    /// なので、選んだ場所から辿れる入り口だけを置く。名前は前の方式と同じ `GoogleDrive`
     private func placeShortcut(to visible: URL) {
         let volume = Settings.volume
         guard !volume.isEmpty else { return }
 
-        let link = URL(fileURLWithPath: volume).appendingPathComponent("Gocci")
+        let link = URL(fileURLWithPath: volume).appendingPathComponent(Self.entranceName)
         let manager = FileManager.default
 
         // 前の行き先を指したままのことがある。張り直す
