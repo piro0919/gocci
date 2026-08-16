@@ -19,42 +19,36 @@ let logger = Logger(subsystem: "io.kkweb.gocci", category: "fileprovider")
 //
 // 中身の受け渡しは rclone に任せる。マウントは張らず、`rcd` で開けた口へ HTTP で頼む。
 //
-// 識別子はマウント先から見た道そのものにしてある。Drive の ID を使う手もあるが、
-// 道が分かればそのまま rclone に渡せる。根だけ `.rootContainer` で特別扱い。
-
-/// 道と識別子の行き来
-enum Route {
-    static func path(of identifier: NSFileProviderItemIdentifier) -> String {
-        identifier == .rootContainer ? "" : identifier.rawValue
-    }
-
-    static func identifier(of path: String) -> NSFileProviderItemIdentifier {
-        path.isEmpty ? .rootContainer : NSFileProviderItemIdentifier(path)
-    }
-
-    static func parent(of path: String) -> NSFileProviderItemIdentifier {
-        identifier(of: (path as NSString).deletingLastPathComponent)
-    }
-}
+// 識別子は Drive の ID にしてある。道にすると名前を変えるたびに別物になってしまう。
+// rclone に頼むときは道が要るので、その対応は `Ledger` が持つ。根だけ `.rootContainer`。
 
 final class Item: NSObject, NSFileProviderItem {
     let itemIdentifier: NSFileProviderItemIdentifier
-    let parentItemIdentifier: NSFileProviderItemIdentifier
     let filename: String
     let isDirectory: Bool
     let bytes: Int64
     let modified: Date
+    /// rclone に頼むときの道。識別子には出さない
+    let path: String
     /// 中身が変わったかの見分け。大きさと時刻が変わっていなければ同じものとして扱う
     let signature: String
 
-    init(path: String, isDirectory: Bool, bytes: Int64, modified: Date) {
-        self.itemIdentifier = Route.identifier(of: path)
-        self.parentItemIdentifier = Route.parent(of: path)
+    init(id: String, path: String, isDirectory: Bool, bytes: Int64, modified: Date) {
+        self.itemIdentifier = NSFileProviderItemIdentifier(id)
         self.filename = (path as NSString).lastPathComponent
         self.isDirectory = isDirectory
         self.bytes = bytes
         self.modified = modified
+        self.path = path
         self.signature = "\(bytes)-\(modified.timeIntervalSince1970)"
+    }
+
+    /// 親は台帳から引く。作るときに求めると、台帳を読み込んでいる最中に
+    /// その台帳を引くことになる
+    var parentItemIdentifier: NSFileProviderItemIdentifier {
+        let parent = (path as NSString).deletingLastPathComponent
+        guard !parent.isEmpty else { return .rootContainer }
+        return Ledger.shared.identifier(forPath: parent) ?? .rootContainer
     }
 
     var contentType: UTType {
@@ -111,20 +105,88 @@ final class Trash: NSObject, NSFileProviderItem {
     }
 }
 
-/// 列挙で分かったことを覚えておく。`item()` は列挙と食い違ってはいけない
+/// 列挙で分かったことを覚えておく。`item()` は列挙と食い違ってはいけない。
+///
+/// 識別子は Drive の ID にしてある。道にすると、名前を変えるたびに識別子が変わるうえ、
+/// 「識別子に機密情報を入れるな。システムログや診断ファイルに残る」という決めごとに反する
+/// （`NSFileProviderItem.h` 295-299行）。ID なら名前が変わっても同じものを指し続ける。
+///
+/// ただし rclone に頼むときは道が要るので、ID から道を引けるようにしておく。拡張は
+/// しょっちゅう起き直るので、覚えた内容は手元のディスクにも残す
 final class Ledger {
     static let shared = Ledger()
     private var entries: [String: Item] = [:]
     private let lock = NSLock()
 
+    private var url: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("ledger.json")
+    }
+
+    init() { load() }
+
     func remember(_ item: Item) {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
         entries[item.itemIdentifier.rawValue] = item
+        lock.unlock()
+        save()
     }
 
     func recall(_ identifier: NSFileProviderItemIdentifier) -> Item? {
         lock.lock(); defer { lock.unlock() }
         return entries[identifier.rawValue]
+    }
+
+    /// 道から識別子を引く。親を辿るのに使う
+    func identifier(forPath path: String) -> NSFileProviderItemIdentifier? {
+        lock.lock(); defer { lock.unlock() }
+        return entries.values.first { $0.path == path }?.itemIdentifier
+    }
+
+    /// 識別子から道を引く。rclone に頼むときは道が要る
+    func path(of identifier: NSFileProviderItemIdentifier) -> String? {
+        if identifier == .rootContainer { return "" }
+        return recall(identifier)?.path
+    }
+
+    /// 消えたものを忘れる。残しておくと、次に同じ ID を訊かれたときに嘘を返す
+    func forget(_ identifier: NSFileProviderItemIdentifier) {
+        lock.lock()
+        entries.removeValue(forKey: identifier.rawValue)
+        lock.unlock()
+        save()
+    }
+
+    // MARK: - 手元に残す
+
+    private func save() {
+        guard let url else { return }
+
+        lock.lock()
+        let payload = entries.mapValues { item in
+            [
+                "path": item.path, "dir": item.isDirectory, "bytes": item.bytes,
+                "modified": item.modified.timeIntervalSince1970,
+            ] as [String: Any]
+        }
+        lock.unlock()
+
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    private func load() {
+        guard let url, let data = try? Data(contentsOf: url),
+            let payload = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]]
+        else { return }
+
+        for (id, raw) in payload {
+            guard let path = raw["path"] as? String else { continue }
+            entries[id] = Item(
+                id: id, path: path, isDirectory: (raw["dir"] as? Bool) ?? false,
+                bytes: (raw["bytes"] as? NSNumber)?.int64Value ?? 0,
+                modified: Date(timeIntervalSince1970: (raw["modified"] as? Double) ?? 0))
+        }
     }
 }
 
@@ -157,7 +219,11 @@ final class Enumerator: NSObject, NSFileProviderEnumerator {
             return
         }
 
-        let base = Route.path(of: container)
+        guard let base = Ledger.shared.path(of: container) else {
+            logger.error("どこを並べるのか分からない")
+            observer.finishEnumeratingWithError(NSFileProviderError(.noSuchItem))
+            return
+        }
         client.list(base) { result in
             switch result {
             case .failure(let error):
@@ -167,8 +233,8 @@ final class Enumerator: NSObject, NSFileProviderEnumerator {
                 let items = entries.map { entry -> Item in
                     let path = base.isEmpty ? entry.name : "\(base)/\(entry.name)"
                     let item = Item(
-                        path: path, isDirectory: entry.isDirectory, bytes: entry.size,
-                        modified: entry.modified)
+                        id: entry.id, path: path, isDirectory: entry.isDirectory,
+                        bytes: entry.size, modified: entry.modified)
                     Ledger.shared.remember(item)
                     return item
                 }
@@ -254,7 +320,11 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
             return
         }
 
-        let path = identifier.rawValue
+        guard let path = Ledger.shared.path(of: identifier) else {
+            // 道を知らないものは探しようがない。macOS には「無い」と答える
+            completion(nil, NSFileProviderError(.noSuchItem))
+            return
+        }
         let parent = (path as NSString).deletingLastPathComponent
         let name = (path as NSString).lastPathComponent
 
@@ -267,7 +337,7 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
             }
 
             let item = Item(
-                path: path, isDirectory: found.isDirectory, bytes: found.size,
+                id: found.id, path: path, isDirectory: found.isDirectory, bytes: found.size,
                 modified: found.modified)
             Ledger.shared.remember(item)
             completion(item, nil)
@@ -292,14 +362,14 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
         try? FileManager.default.createDirectory(
             at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
 
-        client.copy(path: itemIdentifier.rawValue, to: destination) { result in
+        client.copy(path: item.path, to: destination) { result in
             progress.completedUnitCount = 1
             switch result {
             case .failure(let error):
                 logger.error("取れなかった: \(error.localizedDescription, privacy: .public)")
                 completionHandler(nil, nil, NSFileProviderError(.serverUnreachable))
             case .success:
-                logger.info("渡した: \(itemIdentifier.rawValue, privacy: .public)")
+                logger.info("渡した: \(item.filename, privacy: .public)")
                 completionHandler(destination, item, nil)
             }
         }
@@ -327,15 +397,17 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
             return progress
         }
 
-        let parent = Route.path(of: itemTemplate.parentItemIdentifier)
+        let parent = Ledger.shared.path(of: itemTemplate.parentItemIdentifier) ?? ""
         let name = itemTemplate.filename
         let path = parent.isEmpty ? name : "\(parent)/\(name)"
         let isDirectory = itemTemplate.contentType == .folder
 
         /// 上げ終えたら、こちらの覚えも新しくして返す
         let settle: (Int64) -> Void = { bytes in
+            // 上げた直後は Drive の ID が分からない。道を借りておき、
+            // 次に並べ直したときに本物の ID へ入れ替わる
             let item = Item(
-                path: path, isDirectory: isDirectory, bytes: bytes,
+                id: path, path: path, isDirectory: isDirectory, bytes: bytes,
                 modified: itemTemplate.contentModificationDate.flatMap { $0 } ?? Date())
             Ledger.shared.remember(item)
             logger.info("作った: \(path, privacy: .public)")
@@ -385,11 +457,14 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
             return progress
         }
 
-        let path = item.itemIdentifier.rawValue
+        guard let path = Ledger.shared.path(of: item.itemIdentifier) else {
+            completionHandler(nil, [], false, NSFileProviderError(.noSuchItem))
+            return progress
+        }
 
         // 名前が変わった、あるいは別のフォルダへ移された。Drive では同じ操作になる
         if changedFields.contains(.filename) || changedFields.contains(.parentItemIdentifier) {
-            let parent = Route.path(of: item.parentItemIdentifier)
+            let parent = Ledger.shared.path(of: item.parentItemIdentifier) ?? ""
             let destination = parent.isEmpty ? item.filename : "\(parent)/\(item.filename)"
 
             guard destination != path else {
@@ -406,7 +481,7 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
                     completionHandler(nil, [], false, NSFileProviderError(.serverUnreachable))
                 case .success:
                     let moved = Item(
-                        path: destination, isDirectory: false,
+                        id: item.itemIdentifier.rawValue, path: destination, isDirectory: false,
                         bytes: item.documentSize.flatMap { $0 }?.int64Value ?? 0,
                         modified: item.contentModificationDate.flatMap { $0 } ?? Date())
                     Ledger.shared.remember(moved)
@@ -438,7 +513,8 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
                 completionHandler(nil, [], false, NSFileProviderError(.serverUnreachable))
             case .success:
                 let updated = Item(
-                    path: path, isDirectory: false, bytes: bytes, modified: Date())
+                    id: item.itemIdentifier.rawValue, path: path, isDirectory: false,
+                    bytes: bytes, modified: Date())
                 Ledger.shared.remember(updated)
                 logger.info("書いた: \(path, privacy: .public)")
                 completionHandler(updated, [], false, nil)
@@ -459,8 +535,13 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
             return progress
         }
 
-        let path = identifier.rawValue
-        let isDirectory = Ledger.shared.recall(identifier)?.isDirectory ?? false
+        guard let known = Ledger.shared.recall(identifier) else {
+            // 知らないものは、こちらから見れば既に無い
+            completionHandler(nil)
+            return progress
+        }
+        let path = known.path
+        let isDirectory = known.isDirectory
 
         let finish: (Result<Void, Error>) -> Void = { result in
             progress.completedUnitCount = 1
@@ -469,6 +550,7 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
                 logger.error("消せなかった: \(path, privacy: .public) \(error.localizedDescription, privacy: .public)")
                 completionHandler(NSFileProviderError(.serverUnreachable))
             case .success:
+                Ledger.shared.forget(identifier)
                 logger.info("消した: \(path, privacy: .public)")
                 completionHandler(nil)
             }
@@ -529,7 +611,7 @@ extension GocciFileProvider: NSFileProviderPartialContentFetching {
             }
 
             client.fetchRange(
-                path: itemIdentifier.rawValue, offset: Int64(start), length: Int64(length)
+                path: item.path, offset: Int64(start), length: Int64(length)
             ) { result in
                 progress.completedUnitCount = 1
 
@@ -625,7 +707,7 @@ extension GocciFileProvider: NSFileProviderThumbnailing {
                 let scratch = FileManager.default.temporaryDirectory
                     .appendingPathComponent("thumb-\(UUID().uuidString)")
 
-                client.copy(path: identifier.rawValue, to: scratch) { result in
+                client.copy(path: item.path, to: scratch) { result in
                     defer { try? FileManager.default.removeItem(at: scratch) }
 
                     guard case .success = result else { return giveUp() }
