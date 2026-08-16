@@ -58,7 +58,7 @@ swiftc \
   -framework Sparkle \
   -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
   -o "$APP/Contents/MacOS/Gocci" \
-  Sources/Paths.swift Sources/Localization.swift Sources/Settings.swift \
+  Sources/Localization.swift Sources/Settings.swift \
   Sources/Rclone.swift Sources/RcloneConfig.swift Sources/Rc.swift \
   Sources/Mark.swift Sources/Icon.swift Sources/Updater.swift \
   Sources/RcEndpoint.swift Sources/RcClient.swift Sources/Provider.swift \
