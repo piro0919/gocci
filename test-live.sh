@@ -14,9 +14,58 @@ cd "$(dirname "$0")"
 
 APP="/Applications/Gocci.app"
 RCLONE="$APP/Contents/MacOS/rclone"
-DRIVE="$HOME/Library/CloudStorage/Gocci-Gocci"
 REMOTE="gdrive"
 WORK="gocci-live-test"
+
+# 見える場所は置き場所によって変わる。外付けに置くと、内蔵の
+# `~/Library/CloudStorage` には何も現れない。決め打ちにすると外付けの構成で
+# 試験そのものが走らない（2026-08-17）
+find_drive() {
+  local candidate
+  for candidate in /Volumes/*/.CloudStorage/Data/Gocci-* \
+    "$HOME/Library/CloudStorage/Gocci-"*; do
+    [ -d "$candidate" ] && { echo "$candidate"; return 0; }
+  done
+  return 1
+}
+DRIVE="$(find_drive 2>/dev/null)"
+DRIVE="${DRIVE:-$HOME/Library/CloudStorage/Gocci-Gocci}"
+
+# 落ちてきた分が何ブロック占めているか。0 なら手元には無い
+blocks() { /usr/bin/stat -f "%b" "$1" 2>/dev/null || echo 0; }
+
+# Finder に板が残っていると、以降の操作が `-15260 ビジー状態です` で通らなくなる
+dismiss_dialogs() {
+  osascript >/dev/null 2>&1 <<'AS'
+tell application "System Events" to tell process "Finder"
+  repeat with w in windows
+    try
+      if subrole of w is "AXDialog" then click button 1 of w
+    end try
+  end repeat
+end tell
+AS
+}
+
+# Finder の右クリックの品を押す。読むだけでは `fetchPartialContents` の側しか
+# 通らず、丸ごと落とす道は試されない（2026-08-17 に取りこぼした）
+finder_action() {
+  local path="$1" item="$2"
+  dismiss_dialogs
+  osascript >/dev/null 2>&1 <<AS
+tell application "Finder"
+  activate
+  reveal POSIX file "$path" as alias
+end tell
+delay 3
+tell application "System Events" to tell process "Finder"
+  set el to value of attribute "AXFocusedUIElement"
+  perform action "AXShowMenu" of el
+  delay 2
+  click menu item "$item" of menu 1 of el
+end tell
+AS
+}
 
 failures=0
 
@@ -73,7 +122,23 @@ if [ ! -d "$DRIVE" ]; then
   open -a "$APP"
   wait_for 90 "繋がるの" test -d "$DRIVE"
 fi
+# 作ったものと動いているものが食い違ったまま2時間以上検証したことがある。
+# その間の結論は全部無効だった（2026-08-17）
+FP="Contents/PlugIns/GocciFileProvider.appex/Contents/MacOS/GocciFileProvider"
+if [ -f "Gocci.app/$FP" ]; then
+  check "作ったものが入っている" \
+    "$(shasum -a 256 "Gocci.app/$FP" 2>/dev/null | awk '{print $1}')" \
+    "$(shasum -a 256 "$APP/$FP" 2>/dev/null | awk '{print $1}')"
+fi
+running=$(pgrep -lf GocciFileProvider | awk '{print $2}' | head -1)
+if [ -n "$running" ]; then
+  check "入っているものが動いている" \
+    "$(shasum -a 256 "$running" 2>/dev/null | awk '{print $1}')" \
+    "$(shasum -a 256 "$APP/$FP" 2>/dev/null | awk '{print $1}')"
+fi
+
 check "Finder から見える" "$([ -d "$DRIVE" ] && echo yes || echo no)" "yes"
+echo "  見える場所: $DRIVE"
 
 count=$(ls "$DRIVE" 2>/dev/null | wc -l | tr -d ' ')
 if [ "$count" -gt 0 ]; then pass "一覧が取れる（$count 件）"; else fail "一覧が取れる"; fi
@@ -139,6 +204,48 @@ else
 fi
 
 echo ""
+echo "丸ごと落とす"
+
+# ここは読むだけでは通らない。読むと `fetchPartialContents` が呼ばれ、
+# `fetchContents` は一度も試されないまま「直った」ことになる（2026-08-17 実測）
+if [ -e "$DRIVE/$WORK/sample.png" ]; then
+  check "落とす前は手元に無い" "$(blocks "$DRIVE/$WORK/sample.png")" "0"
+
+  finder_action "$DRIVE/$WORK/sample.png" "今すぐダウンロード"
+  if wait_for 90 "落ちてくるの" \
+    sh -c "[ \"\$(/usr/bin/stat -f '%b' '$DRIVE/$WORK/sample.png' 2>/dev/null)\" != 0 ]"; then
+    pass "「今すぐダウンロード」で落ちてくる"
+
+    original=$("$RCLONE" md5sum "$REMOTE:$WORK/sample.png" 2>/dev/null | awk '{print $1}')
+    check "落ちてきた中身が一致する" "$(md5 -q "$DRIVE/$WORK/sample.png" 2>/dev/null)" "$original"
+
+    # 眼目はここ。落ちた分が置き場所のディスクに入っていること
+    where=$(df "$DRIVE/$WORK/sample.png" 2>/dev/null | awk 'NR==2 {print $NF}')
+    root=$(df / 2>/dev/null | awk 'NR==2 {print $NF}')
+    if [ "$where" = "$root" ]; then
+      echo "  ・置き場所は起動ディスク（$where）"
+    else
+      pass "落ちた分は $where に入る"
+    fi
+  else
+    fail "「今すぐダウンロード」で落ちてくる"
+  fi
+
+  echo ""
+  echo "手元から消す"
+
+  finder_action "$DRIVE/$WORK/sample.png" "ダウンロードを削除"
+  if wait_for 60 "手元から消えるの" \
+    sh -c "[ \"\$(/usr/bin/stat -f '%b' '$DRIVE/$WORK/sample.png' 2>/dev/null)\" = 0 ]"; then
+    pass "「ダウンロードを削除」で手元から消える"
+  else
+    fail "「ダウンロードを削除」で手元から消える"
+  fi
+  check "消しても見えたままになる" \
+    "$([ -e "$DRIVE/$WORK/sample.png" ] && echo yes || echo no)" "yes"
+fi
+
+echo ""
 echo "読み出し"
 
 if [ -e "$DRIVE/$WORK/sample.png" ]; then
@@ -146,6 +253,9 @@ if [ -e "$DRIVE/$WORK/sample.png" ]; then
   through=$(md5 -q "$DRIVE/$WORK/sample.png" 2>/dev/null)
   check "中身が一致する" "$through" "$original"
 fi
+
+# 板を出したまま終わると、次に走らせたときに何も押せない
+dismiss_dialogs
 
 
 echo ""

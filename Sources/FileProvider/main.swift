@@ -839,10 +839,13 @@ extension GocciFileProvider: NSFileProviderCustomAction {
             return progress
         }
 
-        // 実体を捨てるのは macOS の受け持ち。こちらは頼むだけ
-        let domain = NSFileProviderDomain(
-            identifier: NSFileProviderDomainIdentifier("gocci"), displayName: "Gocci")
-        guard let manager = NSFileProviderManager(for: domain) else {
+        // 実体を捨てるのは macOS の受け持ち。こちらは頼むだけ。
+        //
+        // 繋ぎの名前は決め打ちにできない。外付けに置くと起動のたびに変わるので、
+        // `"gocci"` で作った繋ぎに頼んでも何も起きず、しかも黙って成功して見える
+        // （2026-08-17 実測）。自分が起こされたときの繋ぎを使う
+        guard let domain = Self.myDomain, let manager = NSFileProviderManager(for: domain) else {
+            logger.error("どの繋ぎとして動いているのか分からないので、手元から消せない")
             completionHandler(NSFileProviderError(.serverUnreachable))
             return progress
         }
