@@ -194,6 +194,7 @@ final class Provider {
                         providerLogger.error(
                             "外せなかった: \(error.localizedDescription, privacy: .public)")
                     }
+                    Self.clearExternalLeftovers()
                     group.leave()
                 }
             }
@@ -201,7 +202,7 @@ final class Provider {
             // 外した直後に作ると `513` で断られる。macOS 側の後片付けを待つ
             group.notify(queue: .main) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
-                    Task { @MainActor in self.createDomain(retriesLeft: 8, then: next) }
+                    Task { @MainActor in self.createDomain(retriesLeft: 20, then: next) }
                 }
             }
         }
@@ -229,7 +230,30 @@ final class Provider {
     }
 
     /// 断られたら少し置いて試し直す。後片付けが終わるまでは `513` が返り続ける
-    private func createDomain(retriesLeft: Int = 5, then next: @escaping () -> Void) {
+    /// 外付けに残る自分の記録を片付ける。
+    ///
+    /// ドメインを外しても `\(ボリューム)/.CloudStorage/System/<拡張の名前>` が残り、
+    /// 残ったままだと次に作るときに `513` で断られ続ける（2026-08-17 実測。
+    /// これを消すと、同じ条件で即座に作れた）
+    private static func clearExternalLeftovers() {
+        let volume = Settings.volume
+        guard !volume.isEmpty else { return }
+
+        let leftover = URL(fileURLWithPath: volume)
+            .appendingPathComponent(".CloudStorage/System", isDirectory: true)
+            .appendingPathComponent("io.kkweb.gocci.FileProvider", isDirectory: true)
+
+        guard FileManager.default.fileExists(atPath: leftover.path) else { return }
+        do {
+            try FileManager.default.removeItem(at: leftover)
+            providerLogger.info("外付けに残った記録を片付けた")
+        } catch {
+            providerLogger.error(
+                "外付けの記録を片付けられなかった: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func createDomain(retriesLeft: Int = 20, then next: @escaping () -> Void) {
         let volume = Settings.volume
         let domain: NSFileProviderDomain
 

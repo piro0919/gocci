@@ -596,9 +596,15 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
     ) -> Progress {
         let progress = Progress(totalUnitCount: 1)
 
-        // ゴミ箱の下は素通しにする。中身を持たないので、頼まれた通りを返しておく。
-        // ここで断ると、macOS は列挙まで辿り着かない（2026-08-16 実測）
-        if itemTemplate.parentItemIdentifier == .trashContainer {
+        // ゴミ箱まわりは素通しにする。Drive には作らず、頼まれた通りを返しておく。
+        //
+        // ここで断ると、macOS は `-2011「同期は有効になっていません」` を出し続け、
+        // 列挙まで辿り着かない。macOS はゴミ箱そのもの（`.Trash`）を根の下に作ろうとするので、
+        // 「ゴミ箱の下か」だけを見ていると取りこぼす（2026-08-17 実測）
+        if itemTemplate.parentItemIdentifier == .trashContainer
+            || itemTemplate.itemIdentifier == .trashContainer
+            || itemTemplate.filename == ".Trash"
+        {
             completionHandler(itemTemplate, [], false, nil)
             return progress
         }
