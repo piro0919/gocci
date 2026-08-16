@@ -6,7 +6,7 @@ pulls a folder down just because you opened it.
 
 The official Google Drive app cannot choose where it keeps things: it fills your
 startup disk. Mountain Duck lands in `~/Library/CloudStorage` on macOS whatever
-you configure. CloudMounter can use an external disk but costs money. Gocci does
+you configure. Gocci does
 one thing: one Google account, in Finder, on the disk you picked, connected at
 login.
 

@@ -1,97 +1,17 @@
 {
   "meta": {
     "title": "Gocci — Keep Google Drive on an external disk, in Finder",
-    "description": "Downloads land on the disk you choose. Opening a folder pulls nothing down. A small macOS menu bar app."
+    "description": "Google Drive in Finder, with what you download kept on the disk you pick."
   },
   "hero": {
     "badge": "macOS 14+ / Apple silicon",
-    "title": "Drive in Finder.\nFiles on your own disk.",
-    "tagline": "What you download goes to the disk you picked. Opening a folder downloads nothing at all.",
+    "title": "Google Drive in Finder.\nFiles on your own disk.",
+    "tagline": "What you download goes to the disk you picked.",
     "download": "Download",
     "source": "View source",
-    "note": "Free and open source. The first launch shows an \"unidentified developer\" warning"
-  },
-  "problem": {
-    "title": "Why this exists",
-    "lead": "The startup disk was full, so Google Drive had to live on an external one. No existing tool would do it.",
-    "items": [
-      {
-        "title": "Google's own app",
-        "body": "No say in where files are kept. It fills the startup disk, which had 42GB free."
-      },
-      {
-        "title": "Mountain Duck",
-        "body": "On macOS the docs say it always lands in ~/Library/CloudStorage. Your chosen path is ignored."
-      },
-      {
-        "title": "CloudMounter",
-        "body": "It can use an external disk, but it costs money and shows every file you ever opened via a share link."
-      }
-    ]
-  },
-  "features": {
-    "title": "What Gocci does",
-    "items": [
-      {
-        "title": "Keeps files on your disk",
-        "body": "Downloads go to the disk you pick in Settings. Your startup disk stays as free as it was. It shows up as GoogleDrive at the top of that disk."
-      },
-      {
-        "title": "Opening a folder downloads nothing",
-        "body": "macOS is told the contents live in the cloud, so Finder just lists names. A folder full of video opens instantly."
-      },
-      {
-        "title": "Thumbnails still appear",
-        "body": "There is a separate channel for artwork, so drawing an icon never pulls the file down."
-      },
-      {
-        "title": "Only the part you read",
-        "body": "Skip into the middle of a large file and only that part is fetched. Jumping into a 70GB video does not fetch 70GB."
-      },
-      {
-        "title": "No shared items in the way",
-        "body": "Files you opened through a share link never show up. You see what your browser's My Drive shows."
-      },
-      {
-        "title": "Managed the way macOS does it",
-        "body": "Finder marks what is downloaded. Right-click offers Remove Download, and Settings can clear the lot."
-      }
-    ]
-  },
-  "screens": {
-    "title": "Screens",
-    "lead": "All that stays on screen is the menu bar mark. Settings fit on one page.",
-    "menu": "The menu: whether it is connected, and how to open or disconnect it",
-    "settings": "Settings: where files are kept, credentials, clearing downloads"
-  },
-  "how": {
-    "title": "How it works",
-    "body": "Gocci registers with macOS as a File Provider — the same mechanism iCloud Drive uses, so the system knows the contents live in the cloud. rclone handles talking to Drive, and nothing is mounted.",
-    "points": [
-      "Writing works normally. Copy, delete and rename from Finder",
-      "Files added on another machine show up within a minute",
-      "rclone ships inside the app, pinned to a version that was tested"
-    ]
-  },
-  "install": {
-    "title": "Getting started",
-    "steps": [
-      {
-        "title": "Install it",
-        "body": "Download the DMG and drag Gocci into Applications. The first launch is blocked, so allow it from System Settings → Privacy & Security."
-      },
-      {
-        "title": "Connect Drive",
-        "body": "Run rclone config to create one drive remote, and make your own client ID while you are there. The README walks through it."
-      },
-      {
-        "title": "Pick a disk",
-        "body": "Open Settings and choose your external disk under Stored on. From then on it connects at every login."
-      }
-    ]
+    "note": "Free and open source. The README walks through getting started"
   },
   "footer": {
-    "built": "A macOS menu bar app by the author of Konechi",
     "source": "GitHub"
   },
   "language": {
