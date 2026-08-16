@@ -783,26 +783,6 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
     }
 }
 
-// MARK: - 外付けに置いたとき
-
-// 外付けに置いた繋ぎは、macOS が「今つないでよいか」を訊いてくる。答えないと、
-// 一覧を返しても次の要求が来ない（2026-08-17 実測）。
-//
-// 「実装しなければ自動で接続される」とヘッダにはあるが、実際には答えるまで先へ進まなかった
-
-@available(macOS 15.0, *)
-extension GocciFileProvider: NSFileProviderExternalVolumeHandling {
-    @objc func shouldConnectExternalDomain(
-        completionHandler: @escaping (Error?) -> Void
-    ) {
-        // ここで断ると、繋ぎは切れたままになり、後から口が立っても訊き直してくれない。
-        // 外付けが挿さっているなら受ける。rclone がまだ立っていないだけなら、
-        // 実際に一覧や中身を訊かれたときに答えればいい（2026-08-17 実測）
-        logger.info("外付けの繋ぎを受けた")
-        completionHandler(nil)
-    }
-}
-
 // MARK: - 右クリックの項目
 
 // File Provider の下では、Finder 拡張のメニューは出ない。両方を同時に持つこともできない

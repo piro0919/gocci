@@ -101,18 +101,24 @@ final class Provider {
             providerLogger.info("rclone: \(text, privacy: .public)")
         }
 
-        do {
-            try task.run()
-        } catch {
-            state = .failed(error.localizedDescription)
-            return
-        }
-        rclone = task
+        // 繋ぎを先に作る。rclone を立ててから申し出ると、外付けへの登録が
+        // `513` で断られ続ける（2026-08-17 実測。同じ条件でも順序を変えるだけで通る）
+        addDomain { [weak self] in
+            guard let self else { return }
 
-        // 中身を配る口も開ける。範囲を指定して取るために、こちらは HTTP にする。
-        // 口が立つまで少し待つ。rcd が受け付けを始める前に頼むと届かない
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1) { [weak self] in
-            self?.startContentServer(endpoint: endpoint)
+            do {
+                try task.run()
+            } catch {
+                self.state = .failed(error.localizedDescription)
+                return
+            }
+            self.rclone = task
+
+            // 中身を配る口も開ける。範囲を指定して取るために、こちらは HTTP にする。
+            // 口が立つまで少し待つ。rcd が受け付けを始める前に頼むと届かない
+            DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
+                self.startContentServer(endpoint: endpoint)
+            }
         }
     }
 
@@ -137,7 +143,6 @@ final class Provider {
                     RcEndpoint.write(
                         port: endpoint.port, user: endpoint.user, password: endpoint.password,
                         remote: Settings.remote + ":", contentPort: contentPort)
-                    self.addDomain()
                     self.startWatching()
                 }
             }
@@ -150,7 +155,7 @@ final class Provider {
     ///
     /// 毎回、自分の繋ぎを全部外してから作り直す。「合っているかどうか」を見て残す作りにも
     /// してみたが、内蔵と外付けの両方が残って互いの邪魔をした。判断を挟まないほうが確実
-    private func addDomain() {
+    private func addDomain(then next: @escaping () -> Void) {
         NSFileProviderManager.getDomainsWithCompletionHandler { [weak self] domains, _ in
             guard let self else { return }
 
@@ -158,6 +163,24 @@ final class Provider {
                 $0.identifier == Self.builtInIdentifier
                     || ($0.identifier.rawValue.hasPrefix("NSFPExternal-")
                         && $0.displayName == "Gocci")
+            }
+
+            // 置き場所が合っているものは、そのまま使う。外して作り直すと、
+            // 後始末が終わる前に作ることになり `513` で断られる（2026-08-17 実測）
+            let wantsExternal = !Settings.volume.isEmpty && Settings.canUseExternalVolume
+            if let keep = mine.first(where: {
+                ($0.identifier != Self.builtInIdentifier) == wantsExternal
+            }) {
+                providerLogger.info(
+                    "今の繋ぎをそのまま使う: \(keep.identifier.rawValue, privacy: .public) / 切れている: \(keep.isDisconnected)")
+                Task { @MainActor in
+                    self.visibleURL { url in
+                        providerLogger.info(
+                            "見える場所: \(url?.path ?? "分からない", privacy: .public)")
+                    }
+                    next()
+                }
+                return
             }
             providerLogger.info(
                 "今ある繋ぎ: \(domains.count) 件、うち自分のもの \(mine.count) 件")
@@ -177,14 +200,36 @@ final class Provider {
 
             // 外した直後に作ると `513` で断られる。macOS 側の後片付けを待つ
             group.notify(queue: .main) {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                    Task { @MainActor in self.createDomain() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
+                    Task { @MainActor in self.createDomain(retriesLeft: 8, then: next) }
                 }
             }
         }
     }
 
-    private func createDomain() {
+    /// 切り分け用。rclone も控えも介さず、ドメインだけを作る
+    func createDomainOnly(completion: @escaping () -> Void) {
+        let volume = Settings.volume
+        guard !volume.isEmpty, #available(macOS 15.0, *) else { return completion() }
+
+        let domain = NSFileProviderDomain(
+            displayName: "Gocci", userInfo: ["owner": Self.mark],
+            volumeURL: URL(fileURLWithPath: volume))
+
+        NSFileProviderManager.add(domain) { error in
+            if let error {
+                providerLogger.error(
+                    "ドメインだけでも作れない: \((error as NSError).code)")
+            } else {
+                providerLogger.info(
+                    "ドメインだけなら作れた: \(domain.identifier.rawValue, privacy: .public)")
+            }
+            Task { @MainActor in completion() }
+        }
+    }
+
+    /// 断られたら少し置いて試し直す。後片付けが終わるまでは `513` が返り続ける
+    private func createDomain(retriesLeft: Int = 5, then next: @escaping () -> Void) {
         let volume = Settings.volume
         let domain: NSFileProviderDomain
 
@@ -204,8 +249,18 @@ final class Provider {
                 guard let self else { return }
                 if let error {
                     let ns = error as NSError
+                    // 後片付けが終わっていないだけなら、待てば通る
+                    if ns.code == 513, retriesLeft > 0 {
+                        providerLogger.info("まだ作れないので待つ（残り \(retriesLeft) 回）")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
+                            Task { @MainActor in
+                                self.createDomain(retriesLeft: retriesLeft - 1, then: next)
+                            }
+                        }
+                        return
+                    }
                     providerLogger.error(
-                        "繋げなかった: \(ns.domain, privacy: .public) \(ns.code) / \(ns.userInfo.description, privacy: .public)")
+                        "繋げなかった: \(ns.domain, privacy: .public) \(ns.code)")
                     self.state = .failed(error.localizedDescription)
                 } else {
                     providerLogger.info(
@@ -215,6 +270,7 @@ final class Provider {
                         providerLogger.info(
                             "見える場所: \(url?.path ?? "分からない", privacy: .public)")
                     }
+                    next()
                 }
             }
         }

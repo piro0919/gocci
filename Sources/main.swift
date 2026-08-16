@@ -85,6 +85,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 更新の確認は起動時に1回だけ。見つかったときだけ画面が出る
         Updater.shared.checkQuietly()
 
+        // 切り分け用。ドメインを作るところだけをやる
+        if CommandLine.arguments.contains("--only-domain") {
+            Provider.shared.createDomainOnly { NSApp.terminate(nil) }
+            return
+        }
+
         // 繋ぎを外して降りる。ドメインの出し入れはこの束（アプリ本体）からしかできないので、
         // 外から叩ける口をここに開けておく
         if CommandLine.arguments.contains("--file-provider-stop") {
