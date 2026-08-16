@@ -55,6 +55,19 @@ final class Provider {
         }
     }
 
+    /// 人に見せる場所。外付けに置いたときは、根に置いた入り口のほうを返す。
+    /// macOS が返すのは隠しフォルダの中で、そこを開いても外付けからは辿れない
+    func entranceURL(completion: @escaping (URL?) -> Void) {
+        let volume = Settings.volume
+        if !volume.isEmpty {
+            let link = URL(fileURLWithPath: volume).appendingPathComponent("Gocci")
+            if FileManager.default.fileExists(atPath: link.path) {
+                return completion(link)
+            }
+        }
+        visibleURL(completion: completion)
+    }
+
     /// 人から見える場所。macOS が決めるので、こちらでは訊くだけ
     func visibleURL(completion: @escaping (URL?) -> Void) {
         currentDomain { domain in
@@ -179,6 +192,7 @@ final class Provider {
                     self.visibleURL { url in
                         providerLogger.info(
                             "見える場所: \(url?.path ?? "分からない", privacy: .public)")
+                        if let url { self.placeShortcut(to: url) }
                     }
                     next()
                 }
@@ -237,6 +251,37 @@ final class Provider {
     }
 
     /// 断られたら少し置いて試し直す。後片付けが終わるまでは `513` が返り続ける
+    /// 外付けの根に入り口を置く。
+    ///
+    /// 外付けに置くと、macOS は `\(ボリューム)/.CloudStorage/Data/Gocci-Gocci` を
+    /// 「人から見える場所」にする。隠しフォルダの中なので、外付けを開いても見えない。
+    /// 場所を選んだ人からすれば、そこに現れないのは繋がっていないのと同じなので、
+    /// 根から辿れるようにしておく
+    private func placeShortcut(to visible: URL) {
+        let volume = Settings.volume
+        guard !volume.isEmpty else { return }
+
+        let link = URL(fileURLWithPath: volume).appendingPathComponent("Gocci")
+        let manager = FileManager.default
+
+        // 前の行き先を指したままのことがある。張り直す
+        if let existing = try? manager.destinationOfSymbolicLink(atPath: link.path) {
+            guard existing != visible.path else { return }
+            try? manager.removeItem(at: link)
+        } else if manager.fileExists(atPath: link.path) {
+            // 人が作った同じ名前のものは触らない
+            return
+        }
+
+        do {
+            try manager.createSymbolicLink(at: link, withDestinationURL: visible)
+            providerLogger.info("外付けの根に入り口を置いた")
+        } catch {
+            providerLogger.error(
+                "入り口を置けなかった: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     /// 外付けに残る自分の記録を片付ける。
     ///
     /// ドメインを外しても `\(ボリューム)/.CloudStorage/System/<拡張の名前>` が残り、
@@ -317,6 +362,7 @@ final class Provider {
                     self.visibleURL { url in
                         providerLogger.info(
                             "見える場所: \(url?.path ?? "分からない", privacy: .public)")
+                        if let url { self.placeShortcut(to: url) }
                     }
                     next()
                 }

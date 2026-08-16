@@ -279,7 +279,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func openInFinder() {
-        provider.visibleURL { url in
+        provider.entranceURL { url in
             guard let url else { return }
             NSWorkspace.shared.open(url)
         }
