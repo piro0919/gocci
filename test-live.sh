@@ -101,6 +101,23 @@ else
 fi
 
 echo ""
+echo "削除"
+
+# 上げ終わる前に消しにいかない。macOS はアップロード中のものを消そうとすると、
+# その仕事を保留したまま先へ進まない（2026-08-16 実測。150秒待っても届かなかった）
+wait_for 90 "上げ終わるの" \
+  sh -c "'$RCLONE' ls '$REMOTE:$WORK' --no-traverse 2>/dev/null | grep -q 'hello.txt'"
+sleep 10
+
+rm "$DRIVE/$WORK/hello.txt" 2>/dev/null
+if wait_for 150 "Drive から消えるの" \
+  sh -c "! '$RCLONE' ls '$REMOTE:$WORK' --no-traverse 2>/dev/null | grep -q 'hello.txt'"; then
+  pass "消すと Drive からも消える"
+else
+  fail "消すと Drive からも消える"
+fi
+
+echo ""
 echo "開いても落ちてこない"
 
 # Gocci を通さずに Drive へ画像を置き、そのフォルダを開いて、実体が増えないことを見る。
@@ -130,17 +147,6 @@ if [ -e "$DRIVE/$WORK/sample.png" ]; then
   check "中身が一致する" "$through" "$original"
 fi
 
-echo ""
-echo "削除"
-
-# 消えるまでは書き込みより待つ。macOS は消す仕事を溜めてからまとめて渡してくる
-rm "$DRIVE/$WORK/hello.txt" 2>/dev/null
-if wait_for 150 "Drive から消えるの" \
-  sh -c "! '$RCLONE' ls '$REMOTE:$WORK' --no-traverse 2>/dev/null | grep -q 'hello.txt'"; then
-  pass "消すと Drive からも消える"
-else
-  fail "消すと Drive からも消える"
-fi
 
 echo ""
 if [ "$failures" = "0" ]; then
