@@ -34,17 +34,16 @@ export async function generateMetadata({
     description: t("description"),
     icons: { icon: "/icon.png" },
     metadataBase: new URL("https://gocci.kkweb.io"),
+    // 画像は opengraph-image.tsx が出す。ここで指定すると、そちらが使われなくなる
     openGraph: {
       description: t("description"),
-      images: ["/icon.png"],
       title: t("title"),
       type: "website",
     },
     title: t("title"),
     twitter: {
-      card: "summary",
+      card: "summary_large_image",
       description: t("description"),
-      images: ["/icon.png"],
       title: t("title"),
     },
   };
