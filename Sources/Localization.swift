@@ -81,23 +81,20 @@ enum L {
     static var storageChanged: String {
         t("繋ぎ直します。降りてきていたものは消えます", "Reconnecting. Anything downloaded is dropped")
     }
-    static var evictDownloads: String { t("ダウンロードを空にする", "Remove Downloads") }
-    /// 空にする前に、何がどれだけ消えるのかを出す
+    // 落としてきた実体まわり。「手元」「空にする」では何のことか伝わらなかったので、
+    // Finder の右クリックと同じ言い方（ダウンロード）に寄せる
+    static var downloads: String { t("ダウンロード", "Downloads") }
+    static var removeAllDownloads: String { t("すべて削除", "Remove All") }
     static func downloaded(_ size: String, count: Int) -> String {
-        t("手元に \(size)（\(count) 件）", "\(size) here (\(count) files)")
+        t("\(size)（\(count) 件）", "\(size) (\(count) files)")
     }
-    static var downloadedNothing: String { t("手元には何もありません", "Nothing is here yet") }
-    static var downloadLimit: String { t("手元に残す上限", "Keep at most") }
-    static var downloadLimitNone: String { t("上限なし", "No limit") }
-    static var downloadLimitHint: String {
-        t(
-            "超えた分は、古く落としたものから消えます",
-            "Anything over it is dropped, oldest download first")
-    }
+    static var downloadedNothing: String { t("なし", "None") }
     static var downloadedCounting: String { t("数えています…", "Counting…") }
-    static var evictedDownloads: String { t("空にしました", "Downloads removed") }
+    static var downloadLimit: String { t("上限", "Limit") }
+    static var downloadLimitNone: String { t("なし", "None") }
+    static var evictedDownloads: String { t("削除しました", "Removed") }
     static func evictFailed(_ reason: String) -> String {
-        t("空にできませんでした: \(reason)", "Could not remove them: \(reason)")
+        t("削除できませんでした: \(reason)", "Could not remove them: \(reason)")
     }
     static var language: String { t("言語", "Language") }
     static var checkForUpdates: String { t("更新を確認", "Check for Updates") }

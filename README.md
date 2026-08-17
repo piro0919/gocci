@@ -70,18 +70,18 @@ you would rather do it that way.
 | Item | Notes |
 | --- | --- |
 | Stored on | Which disk keeps what you download. An external disk needs macOS 15 |
-| Keep at most | A ceiling for what is kept here. Anything over it is dropped |
+| Limit | A ceiling for what is kept on that disk |
 | Client ID / secret | Written straight into your rclone remote |
 | Account | Only shown when `rclone config` holds more than one Drive remote |
 | Language | Japanese / English, defaults to the system |
 | Launch at login | Connects as soon as you log in |
 
-**Remove Downloads** clears everything at once, and the row beside it says how
-much that is. Finder can drop them one at a time too — right-click a file and
+**Downloads** says how much of that disk the copies take, and **Remove All**
+clears them. Finder can drop them one at a time too — right-click a file and
 choose *Remove Download*. Either way the file stays visible; only the copy on
 your disk goes.
 
-*Keep at most* does it without being asked. What goes first is whatever was
+*Limit* does it without being asked. What goes first is whatever was
 downloaded longest ago, not whatever was used longest ago — macOS does not
 report a last-used date for these files, and reads do not move the access time
 on APFS. Changing *Stored on* reconnects the Drive, and anything already

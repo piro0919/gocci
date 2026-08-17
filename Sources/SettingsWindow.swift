@@ -11,7 +11,7 @@ final class SettingsWindowController: NSWindowController {
     private let clientSecretField = NSSecureTextField(string: "")
     private let launchCheckbox = NSButton(
         checkboxWithTitle: L.launchAtLogin, target: nil, action: nil)
-    private let evictButton = NSButton(title: L.evictDownloads, target: nil, action: nil)
+    private let evictButton = NSButton(title: L.removeAllDownloads, target: nil, action: nil)
     /// 押す前に、何がどれだけ消えるのかを出す
     private let downloadedLabel = NSTextField(labelWithString: "")
     private let volumeLabel = NSTextField(labelWithString: "")
@@ -19,9 +19,8 @@ final class SettingsWindowController: NSWindowController {
     private let saveButton = NSButton(title: L.reconnect, target: nil, action: nil)
     private let connectHintLabel = NSTextField(labelWithString: L.connectGoogleHint)
     private lazy var connectHintRow: NSView = aligned(connectHintLabel)
-    /// 手元に残す上限。超えた分は長く触っていないものから捨てる
+    /// 落としてきた分の上限。超えたら古いものから捨てる
     private let limitPopUp = NSPopUpButton()
-    private let limitHintLabel = NSTextField(labelWithString: L.downloadLimitHint)
     private let languagePopUp = NSPopUpButton()
     /// 報告は、押したものの真下に出す。離れた場所に一つだけ置くと、
     /// どの操作の結果なのか読み取れない
@@ -100,8 +99,6 @@ final class SettingsWindowController: NSWindowController {
         connectHintLabel.isHidden = true
         connectHintRow.isHidden = true
 
-        limitHintLabel.font = .systemFont(ofSize: 11)
-        limitHintLabel.textColor = .secondaryLabelColor
         limitPopUp.target = self
         limitPopUp.action = #selector(changeLimit)
         for choice in Settings.downloadLimitChoices {
@@ -140,9 +137,8 @@ final class SettingsWindowController: NSWindowController {
             links(),
             connectHintRow,
             divider(),
+            row(L.downloads, downloadedLabel, evictButton),
             row(L.downloadLimit, limitPopUp),
-            aligned(limitHintLabel),
-            aligned(evictButton, downloadedLabel),
             evictMessageRow,
             divider(),
             row(L.language, languagePopUp),
