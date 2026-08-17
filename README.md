@@ -45,41 +45,47 @@ and drag Gocci into Applications.
 Builds are ad-hoc signed, so the first launch is met with an "unidentified
 developer" warning. Allow it from System Settings → Privacy & Security.
 
-## Setting up rclone
+## Connecting Google
 
-Gocci ships rclone inside the app, but the Google Drive connection itself is an
-rclone remote you create once.
-
-```bash
-rclone config    # create a remote named "gdrive" of type "drive"
-```
+Open Settings and press **Connect Google**. The sign-in happens in your browser,
+and that is the whole of it — no terminal.
 
 rclone's shared Google client ID is being retired during 2026, so **make your
-own** while you are in there — [rclone's
+own** and paste it into Settings — [rclone's
 instructions](https://rclone.org/drive/#making-your-own-client-id) walk through
-the Google Cloud Console. Gocci does not ship a client ID of its own: publishing
-an app that uses a restricted scope means brand review, data access review and
-possibly a third-party security assessment, and staying in "testing" instead
-caps the number of users and expires refresh tokens.
+the Google Cloud Console. You can connect without one and fill it in later;
+saving it re-runs the sign-in, because changing the client ID invalidates the
+token you already have.
 
-Then open Gocci's settings and paste the client ID and secret in. Saving them
-re-runs the Google sign-in, because changing the client ID invalidates the token
-you already have.
+Gocci does not ship a client ID of its own: publishing an app that uses a
+restricted scope means brand review, data access review and possibly a
+third-party security assessment, and staying in "testing" instead caps the
+number of users and expires refresh tokens.
+
+The connection is an ordinary rclone remote, so `rclone config` still works if
+you would rather do it that way.
 
 ## Settings
 
 | Item | Notes |
 | --- | --- |
 | Stored on | Which disk keeps what you download. An external disk needs macOS 15 |
+| Keep at most | A ceiling for what is kept here. Anything over it is dropped |
 | Client ID / secret | Written straight into your rclone remote |
 | Account | Only shown when `rclone config` holds more than one Drive remote |
 | Language | Japanese / English, defaults to the system |
 | Launch at login | Connects as soon as you log in |
 
-There is nothing here about how much space downloads may take. macOS owns that:
-right-click a file in Finder and choose *Remove Download*, or use **Remove
-Downloads** in Settings to clear the lot. Changing *Stored on* reconnects the
-Drive, and anything already downloaded is dropped.
+**Remove Downloads** clears everything at once, and the row beside it says how
+much that is. Finder can drop them one at a time too — right-click a file and
+choose *Remove Download*. Either way the file stays visible; only the copy on
+your disk goes.
+
+*Keep at most* does it without being asked. What goes first is whatever was
+downloaded longest ago, not whatever was used longest ago — macOS does not
+report a last-used date for these files, and reads do not move the access time
+on APFS. Changing *Stored on* reconnects the Drive, and anything already
+downloaded is dropped.
 
 ## What the menu shows
 
