@@ -35,10 +35,17 @@ enum Materialized {
             return completion([])
         }
 
+        let started = Date()
         let enumerator = manager.enumeratorForMaterializedItems()
         let collector = Collector { identifiers in
             enumerator.invalidate()
-            measure(identifiers, with: manager, completion: completion)
+            measure(identifiers, with: manager) { items in
+                // 場所を貰うのは1件ごとの往復。件数が増えたときにどれだけ待つのか、
+                // 見当ではなく記録から分かるようにしておく
+                materializedLogger.info(
+                    "数えた: \(items.count) 件 \(Int(Date().timeIntervalSince(started) * 1000)) ミリ秒")
+                completion(items)
+            }
         }
         // 始めの頁は `NSData new` を渡す決まり（同ヘッダ 308-311行）。
         // 名前順・日付順の指定は効かない

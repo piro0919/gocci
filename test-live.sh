@@ -48,7 +48,11 @@ AS
 }
 
 # Finder の右クリックの品を押す。読むだけでは `fetchPartialContents` の側しか
-# 通らず、丸ごと落とす道は試されない（2026-08-17 に取りこぼした）
+# 通らず、丸ごと落とす道は試されない（2026-08-17 に取りこぼした）。
+#
+# 一度送っただけでは開かないことがある。焦点は行ではなく一覧全体に当たっていて、
+# そこへの `AXShowMenu` は開いたり開かなかったりする。開くまで繰り返す。
+# ここを一発勝負にしていたせいで、動いている機能を「落ちた」と報告した（同日）
 finder_action() {
   local path="$1" item="$2"
   dismiss_dialogs
@@ -60,9 +64,15 @@ end tell
 delay 3
 tell application "System Events" to tell process "Finder"
   set el to value of attribute "AXFocusedUIElement"
-  perform action "AXShowMenu" of el
-  delay 2
-  click menu item "$item" of menu 1 of el
+  repeat 5 times
+    perform action "AXShowMenu" of el
+    delay 2
+    try
+      click menu item "$item" of menu 1 of el
+      return
+    end try
+    delay 2
+  end repeat
 end tell
 AS
 }
@@ -94,12 +104,31 @@ wait_for() {
   return 1
 }
 
+# 上げ終わっていない子を抱えたままフォルダごと消さない。
+# `rm -rf` で消すと、宙に浮いた子がドライブの一番上に付け直される
+# （2026-08-17 実測。hello.txt と sample.png が根に現れた）。
+# 中を先に空にして、上げ終わるのを待ってから、フォルダを外す
 cleanup() {
   echo ""
   echo "片付け"
-  rm -rf "$DRIVE/$WORK" 2>/dev/null
-  sleep 5
+
+  if [ -d "$DRIVE/$WORK" ]; then
+    rm -f "$DRIVE/$WORK"/* 2>/dev/null
+    wait_for 60 "中身が上がりきるの" \
+      sh -c "[ -z \"\$('$RCLONE' ls '$REMOTE:$WORK' --no-traverse 2>/dev/null)\" ]"
+    rmdir "$DRIVE/$WORK" 2>/dev/null
+    sleep 5
+  fi
+
   "$RCLONE" purge "$REMOTE:$WORK" >/dev/null 2>&1
+
+  # 根に落ちてしまったものが無いか、毎回見る。あれば黙って直さず言う
+  local strays
+  strays=$(ls "$DRIVE" 2>/dev/null | grep -E "^(hello\.txt|sample\.png)$" || true)
+  if [ -n "$strays" ]; then
+    echo "  ドライブの一番上に残りました。消してください:"
+    echo "$strays" | sed 's/^/    /'
+  fi
   echo "  終わり"
 }
 trap cleanup EXIT
