@@ -15,6 +15,10 @@ final class SettingsWindowController: NSWindowController {
     /// 押す前に、何がどれだけ消えるのかを出す
     private let downloadedLabel = NSTextField(labelWithString: "")
     private let volumeLabel = NSTextField(labelWithString: "")
+    /// 接続先がまだ無いときは「Google に接続する」、あるときは「保存して認証し直す」
+    private let saveButton = NSButton(title: L.reconnect, target: nil, action: nil)
+    private let connectHintLabel = NSTextField(labelWithString: L.connectGoogleHint)
+    private lazy var connectHintRow: NSView = aligned(connectHintLabel)
     /// 手元に残す上限。超えた分は長く触っていないものから捨てる
     private let limitPopUp = NSPopUpButton()
     private let limitHintLabel = NSTextField(labelWithString: L.downloadLimitHint)
@@ -91,6 +95,11 @@ final class SettingsWindowController: NSWindowController {
         downloadedLabel.font = .systemFont(ofSize: 11)
         downloadedLabel.textColor = .secondaryLabelColor
 
+        connectHintLabel.font = .systemFont(ofSize: 11)
+        connectHintLabel.textColor = .secondaryLabelColor
+        connectHintLabel.isHidden = true
+        connectHintRow.isHidden = true
+
         limitHintLabel.font = .systemFont(ofSize: 11)
         limitHintLabel.textColor = .secondaryLabelColor
         limitPopUp.target = self
@@ -129,6 +138,7 @@ final class SettingsWindowController: NSWindowController {
             row(L.clientID, clientIDField),
             row(L.clientSecret, clientSecretField),
             links(),
+            connectHintRow,
             divider(),
             row(L.downloadLimit, limitPopUp),
             aligned(limitHintLabel),
@@ -206,6 +216,7 @@ final class SettingsWindowController: NSWindowController {
         clientIDField.stringValue = credentials["client_id"] ?? ""
         clientSecretField.stringValue = credentials["client_secret"] ?? ""
         launchCheckbox.state = Settings.launchesAtLogin ? .on : .off
+        showConnectState()
         showVolume()
         showLimit()
         showDownloaded()
@@ -260,11 +271,12 @@ final class SettingsWindowController: NSWindowController {
             title: L.howToGetCredentials, target: self, action: #selector(openHowTo))
         let console = NSButton(
             title: L.openCloudConsole, target: self, action: #selector(openConsole))
-        let save = NSButton(title: L.reconnect, target: self, action: #selector(saveCredentials))
+        saveButton.target = self
+        saveButton.action = #selector(saveCredentials)
         for button in [howTo, console] { button.bezelStyle = .accessoryBarAction }
-        save.bezelStyle = .rounded
+        saveButton.bezelStyle = .rounded
 
-        let stack = NSStackView(views: [howTo, console, save])
+        let stack = NSStackView(views: [howTo, console, saveButton])
         stack.orientation = .horizontal
         stack.spacing = 10
         return aligned(stack)
@@ -289,9 +301,23 @@ final class SettingsWindowController: NSWindowController {
         NSWorkspace.shared.open(URL(string: "https://console.cloud.google.com/apis/credentials")!)
     }
 
+    /// 接続先があるか。無ければ、まず作るところから
+    private var hasRemote: Bool { !RcloneConfig.driveRemotes().isEmpty }
+
+    private func showConnectState() {
+        let connected = hasRemote
+        saveButton.title = connected ? L.reconnect : L.connectGoogle
+        connectHintLabel.isHidden = connected
+        connectHintRow.isHidden = connected
+    }
+
     /// 書き込んでから認証をやり直す。client_id を変えると今の認証は無効になるため、
-    /// 書き込みだけでは繋がらなくなる
+    /// 書き込みだけでは繋がらなくなる。
+    ///
+    /// 接続先そのものが無いときは、書き込む先も無いので、作るところから始める
     @objc private func saveCredentials() {
+        guard hasRemote else { return connectGoogle() }
+
         if let failure = RcloneConfig.setCredentials(
             remote: Settings.remote, clientID: clientIDField.stringValue,
             clientSecret: clientSecretField.stringValue)
@@ -314,6 +340,28 @@ final class SettingsWindowController: NSWindowController {
             if Provider.shared.state == .on {
                 Provider.shared.stop { Provider.shared.start() }
             }
+        }
+    }
+
+    /// 接続先を作る。端末で `rclone config` を叩かなくて済むようにするのがここ
+    private func connectGoogle() {
+        saveButton.isEnabled = false
+        report(L.connectingGoogle)
+
+        RcloneConfig.create(
+            remote: Settings.remote, clientID: clientIDField.stringValue,
+            clientSecret: clientSecretField.stringValue
+        ) { [weak self] failure in
+            guard let self else { return }
+            self.saveButton.isEnabled = true
+
+            if let failure {
+                self.report(failure, failed: true)
+                return
+            }
+            self.report(L.connectedGoogle)
+            self.showConnectState()
+            Provider.shared.start()
         }
     }
 

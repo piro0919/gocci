@@ -57,6 +57,17 @@ enum L {
     static var howToGetCredentials: String { t("取得の手順", "How to Get One") }
     static var openCloudConsole: String { t("Google Cloud Console", "Google Cloud Console") }
     static var reconnect: String { t("保存して認証し直す", "Save and Re-authenticate") }
+    /// まだ繋がっていないときは、やり直しではなく最初の一歩として見せる
+    static var connectGoogle: String { t("Google に接続する", "Connect Google") }
+    static var connectingGoogle: String {
+        t("ブラウザで Google にサインインしてください…", "Sign in to Google in your browser…")
+    }
+    static var connectedGoogle: String { t("繋がりました", "Connected") }
+    static var connectGoogleHint: String {
+        t(
+            "クライアント ID は空のままでも繋がります。後から入れ直せます",
+            "You can leave the client ID empty for now and fill it in later")
+    }
     static var reconnecting2: String {
         t("ブラウザで認証してください…", "Finish the sign-in in your browser…")
     }

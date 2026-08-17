@@ -47,6 +47,30 @@ enum RcloneConfig {
         return result == nil ? "rclone config update に失敗しました" : nil
     }
 
+    /// 接続先を新しく作る。ブラウザが開いて Google の同意画面が出る。
+    ///
+    /// これまでは端末で `rclone config` を叩いてもらう必要があった。入れてすぐ使えると
+    /// 思って落とした人が、そこで詰まる。
+    ///
+    /// `--non-interactive` は付けない。付けると質問が JSON で返ってきて、こちらが
+    /// 一問ずつ答える羽目になる。付けなければ質問は既定で進み、Drive の場合は
+    /// そのままブラウザでの認証に入る（`rclone config create --help`）
+    static func create(
+        remote: String, clientID: String, clientSecret: String,
+        completion: @escaping (String?) -> Void
+    ) {
+        DispatchQueue.global().async {
+            var arguments = ["config", "create", remote, "drive"]
+            if !clientID.isEmpty { arguments += ["client_id", clientID] }
+            if !clientSecret.isEmpty { arguments += ["client_secret", clientSecret] }
+
+            let output = run(arguments, timeout: 300)
+            DispatchQueue.main.async {
+                completion(output == nil ? "繋げませんでした" : nil)
+            }
+        }
+    }
+
     /// 認証をやり直す。ブラウザが開いて Google の同意画面が出る。
     /// client_id を変えると今の認証は無効になるので、書き込みの後は必ずこれが要る
     static func reconnect(remote: String, completion: @escaping (String?) -> Void) {
