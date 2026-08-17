@@ -159,6 +159,7 @@ final class Provider {
                         port: endpoint.port, user: endpoint.user, password: endpoint.password,
                         remote: Settings.remote + ":", contentPort: contentPort)
                     self.startWatching()
+                    self.startTrimming()
                 }
             }
         }
@@ -391,6 +392,53 @@ final class Provider {
             }
             Materialized.total(in: domain) { bytes, count in
                 Task { @MainActor in completion(bytes, count) }
+            }
+        }
+    }
+
+    // MARK: - 上限を保つ
+
+    private var trimObserver: NSObjectProtocol?
+    private var trimWork: DispatchWorkItem?
+    /// 知らせが来てから実際に数えるまでの間。落としている最中は続けざまに来るので、
+    /// 一件ごとに数え直すと、数えるほうが仕事になってしまう
+    private static let trimDelay: TimeInterval = 20
+
+    /// 手元の量が変わったら、上限を超えていないか見る。
+    ///
+    /// 変わったことは macOS が教えてくれる（`NSFileProviderMaterializedSetDidChange`、
+    /// `NSFileProviderManager.h` 302行）。この知らせは
+    /// `getDomainsWithCompletionHandler` を一度呼んだあとから届くようになる
+    private func startTrimming() {
+        if let trimObserver { NotificationCenter.default.removeObserver(trimObserver) }
+        trimObserver = NotificationCenter.default.addObserver(
+            forName: .fileProviderMaterializedSetDidChange, object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.scheduleTrim()
+        }
+        scheduleTrim()
+    }
+
+    private func scheduleTrim() {
+        guard Settings.downloadLimit > 0 else { return }
+        trimWork?.cancel()
+
+        let work = DispatchWorkItem { [weak self] in self?.trimNow() }
+        trimWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.trimDelay, execute: work)
+    }
+
+    /// 今すぐ見る。設定で上限を変えたときにも呼ぶ
+    func trimNow() {
+        let limit = Settings.downloadLimit
+        guard limit > 0 else { return }
+
+        currentDomain { domain in
+            guard let domain else { return }
+            Materialized.enforce(limit: limit, in: domain) { freed, dropped in
+                guard dropped > 0 else { return }
+                providerLogger.info("上限に収めた: \(dropped) 件 \(freed) バイト")
             }
         }
     }

@@ -76,6 +76,13 @@ enum L {
         t("手元に \(size)（\(count) 件）", "\(size) here (\(count) files)")
     }
     static var downloadedNothing: String { t("手元には何もありません", "Nothing is here yet") }
+    static var downloadLimit: String { t("手元に残す上限", "Keep at most") }
+    static var downloadLimitNone: String { t("上限なし", "No limit") }
+    static var downloadLimitHint: String {
+        t(
+            "超えた分は、古く落としたものから消えます",
+            "Anything over it is dropped, oldest download first")
+    }
     static var downloadedCounting: String { t("数えています…", "Counting…") }
     static var evictedDownloads: String { t("空にしました", "Downloads removed") }
     static func evictFailed(_ reason: String) -> String {

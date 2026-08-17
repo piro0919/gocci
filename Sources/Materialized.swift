@@ -16,13 +16,14 @@ private let materializedLogger = Logger(subsystem: "io.kkweb.gocci", category: "
 // 種別も `public.item` までしか入っていない（2026-08-17 実測）。大きさと日付は、
 // 識別子から実ファイルの場所を貰って、そこから読む。
 
-/// 手元にある1件。捨てる順を決めるのに使うので、最後に触った日も持つ
+/// 手元にある1件。捨てる順を決めるのに使うので、落ちてきた時刻も持つ
 struct MaterializedItem {
     let identifier: NSFileProviderItemIdentifier
     let filename: String
     /// ディスクを実際に食っている量。穴あきで置かれることがあるので、見かけの長さではない
     let bytes: Int64
-    let used: Date
+    /// 落ちてきた時刻。「最後に使った日」は取れなかった（下記）
+    let downloaded: Date
 }
 
 enum Materialized {
@@ -48,6 +49,65 @@ enum Materialized {
     static func total(in domain: NSFileProviderDomain, completion: @escaping (Int64, Int) -> Void) {
         list(in: domain) { items in
             completion(items.reduce(0) { $0 + $1.bytes }, items.count)
+        }
+    }
+
+    /// 上限を超えていたら、古く落としたものから捨てる。
+    ///
+    /// 捨てるのは手元の実体だけで、Drive のファイルはそのまま。書き込みの途中や
+    /// まだ上げ終えていないものは macOS が断ってくるので、そのぶんは残す
+    static func enforce(
+        limit: Int64, in domain: NSFileProviderDomain, completion: @escaping (Int64, Int) -> Void
+    ) {
+        guard limit > 0, let manager = NSFileProviderManager(for: domain) else {
+            return completion(0, 0)
+        }
+
+        list(in: domain) { items in
+            let total = items.reduce(0) { $0 + $1.bytes }
+            guard total > limit else { return completion(0, 0) }
+
+            // 古く落としたものから。同じ時刻なら大きいものを先に捨てる
+            let ordered = items.sorted {
+                $0.downloaded == $1.downloaded
+                    ? $0.bytes > $1.bytes : $0.downloaded < $1.downloaded
+            }
+
+            var over = total - limit
+            var chosen: [MaterializedItem] = []
+            for item in ordered where over > 0 {
+                chosen.append(item)
+                over -= item.bytes
+            }
+
+            materializedLogger.info(
+                "上限を超えた: \(total) / \(limit) バイト。\(chosen.count) 件を捨てる")
+
+            let group = DispatchGroup()
+            let lock = NSLock()
+            var freed: Int64 = 0
+            var dropped = 0
+
+            for item in chosen {
+                group.enter()
+                manager.evictItem(identifier: item.identifier) { error in
+                    defer { group.leave() }
+                    if let error {
+                        materializedLogger.info(
+                            "残した: \(item.filename, privacy: .public) \(error.localizedDescription, privacy: .public)")
+                        return
+                    }
+                    lock.lock()
+                    freed += item.bytes
+                    dropped += 1
+                    lock.unlock()
+                }
+            }
+
+            group.notify(queue: .global()) {
+                materializedLogger.info("手元から減らした: \(dropped) 件 \(freed) バイト")
+                completion(freed, dropped)
+            }
         }
     }
 
@@ -77,18 +137,30 @@ enum Materialized {
                 let opened = url.startAccessingSecurityScopedResource()
                 defer { if opened { url.stopAccessingSecurityScopedResource() } }
 
+                // 捨てる順に使えるのは、属性が変わった時刻（`ctime`）だけだった。
+                //
+                // 読んでも最終アクセス日は動かない。APFS は読み出しで `atime` を更新しない
+                // ので、4件を順に読んでも全部同じ秒のままだった。`lastUsedDate` は
+                // 「書類を全画面で開いたとき」に提供側が入れるもので、Finder では入らない。
+                // Spotlight の `kMDItemLastUsedDate` も空。いずれも 2026-08-17 実測。
+                //
+                // `ctime` は実体が降りてきたときに動く。つまり「いつ落としたか」であって
+                // 「いつ使ったか」ではない
                 guard
                     let values = try? url.resourceValues(forKeys: [
-                        .totalFileAllocatedSizeKey, .contentAccessDateKey, .contentModificationDateKey,
+                        .totalFileAllocatedSizeKey, .attributeModificationDateKey,
+                        .contentModificationDateKey,
                     ]), let bytes = values.totalFileAllocatedSize, bytes > 0
                 else { return }
 
-                let used =
-                    values.contentAccessDate ?? values.contentModificationDate ?? .distantPast
+                let downloaded =
+                    values.attributeModificationDate ?? values.contentModificationDate
+                    ?? .distantPast
                 lock.lock()
                 items.append(
                     MaterializedItem(
-                        identifier: identifier, filename: filename, bytes: Int64(bytes), used: used))
+                        identifier: identifier, filename: filename, bytes: Int64(bytes),
+                        downloaded: downloaded))
                 lock.unlock()
             }
         }

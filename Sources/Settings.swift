@@ -45,6 +45,27 @@ enum Settings {
         return false
     }
 
+    // MARK: - 手元に残す上限
+
+    private static let limitKey = "downloadLimit"
+
+    /// これを超えたら、長く触っていないものから捨てる。0 なら捨てない。
+    ///
+    /// 外付けに置けても、外付けもいつかは一杯になる。今のところ減らす手立ては
+    /// 「全部空にする」しか無く、それは片付けとしては大雑把すぎる
+    static var downloadLimit: Int64 {
+        get { Int64(UserDefaults.standard.integer(forKey: limitKey)) }
+        set {
+            UserDefaults.standard.set(Int(newValue), forKey: limitKey)
+            NotificationCenter.default.post(name: .settingsChanged, object: nil)
+        }
+    }
+
+    /// 選ばせる目盛り。刻みを細かくしても選びようがないので、桁で並べる
+    static let downloadLimitChoices: [Int64] = [
+        0, 10 << 30, 50 << 30, 100 << 30, 200 << 30, 500 << 30, 1000 << 30,
+    ]
+
     // MARK: - 言語
 
     static var language: Language {

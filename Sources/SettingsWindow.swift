@@ -15,6 +15,9 @@ final class SettingsWindowController: NSWindowController {
     /// 押す前に、何がどれだけ消えるのかを出す
     private let downloadedLabel = NSTextField(labelWithString: "")
     private let volumeLabel = NSTextField(labelWithString: "")
+    /// 手元に残す上限。超えた分は長く触っていないものから捨てる
+    private let limitPopUp = NSPopUpButton()
+    private let limitHintLabel = NSTextField(labelWithString: L.downloadLimitHint)
     private let languagePopUp = NSPopUpButton()
     /// 報告は、押したものの真下に出す。離れた場所に一つだけ置くと、
     /// どの操作の結果なのか読み取れない
@@ -88,6 +91,14 @@ final class SettingsWindowController: NSWindowController {
         downloadedLabel.font = .systemFont(ofSize: 11)
         downloadedLabel.textColor = .secondaryLabelColor
 
+        limitHintLabel.font = .systemFont(ofSize: 11)
+        limitHintLabel.textColor = .secondaryLabelColor
+        limitPopUp.target = self
+        limitPopUp.action = #selector(changeLimit)
+        for choice in Settings.downloadLimitChoices {
+            limitPopUp.addItem(withTitle: Self.limitTitle(choice))
+        }
+
         let updateButton = NSButton(
             title: L.checkForUpdates, target: self, action: #selector(checkForUpdates))
         updateButton.bezelStyle = .rounded
@@ -119,6 +130,8 @@ final class SettingsWindowController: NSWindowController {
             row(L.clientSecret, clientSecretField),
             links(),
             divider(),
+            row(L.downloadLimit, limitPopUp),
+            aligned(limitHintLabel),
             aligned(evictButton, downloadedLabel),
             evictMessageRow,
             divider(),
@@ -194,6 +207,7 @@ final class SettingsWindowController: NSWindowController {
         clientSecretField.stringValue = credentials["client_secret"] ?? ""
         launchCheckbox.state = Settings.launchesAtLogin ? .on : .off
         showVolume()
+        showLimit()
         showDownloaded()
         report("")
         hasShown = true
@@ -382,6 +396,24 @@ final class SettingsWindowController: NSWindowController {
             let size = formatter.string(fromByteCount: bytes)
             self.downloadedLabel.stringValue = L.downloaded(size, count: count)
         }
+    }
+
+    private static func limitTitle(_ bytes: Int64) -> String {
+        guard bytes > 0 else { return L.downloadLimitNone }
+        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    private func showLimit() {
+        let index = Settings.downloadLimitChoices.firstIndex(of: Settings.downloadLimit) ?? 0
+        limitPopUp.selectItem(at: index)
+    }
+
+    /// 上限を変える。下げたときは、その場で収まるところまで捨てる
+    @objc private func changeLimit() {
+        let index = limitPopUp.indexOfSelectedItem
+        guard Settings.downloadLimitChoices.indices.contains(index) else { return }
+        Settings.downloadLimit = Settings.downloadLimitChoices[index]
+        Provider.shared.trimNow()
     }
 
     @objc private func checkForUpdates() {
