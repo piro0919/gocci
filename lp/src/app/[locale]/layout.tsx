@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/next";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
@@ -61,6 +62,7 @@ export default async function Layout({ children, params }: LayoutProps) {
     <html className={sans.variable} lang={locale}>
       <body className="font-[family-name:var(--font-sans)] antialiased">
         <NextIntlClientProvider>{children}</NextIntlClientProvider>
+        <Analytics />
       </body>
     </html>
   );
