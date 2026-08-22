@@ -22,6 +22,10 @@ html {
 body {
   background: var(--color-ink);
   color: var(--color-text);
+
+  /* 日本語を語のまとまりで折り返す。これが無いと見出しが「を、」や
+     「キ／ーボード」で割れる。対応していないブラウザでは従来どおり */
+  word-break: auto-phrase;
 }
 
 /* 見出しの奥に置く光。上端の青緑から沈む。帯で塗り分けるより、
