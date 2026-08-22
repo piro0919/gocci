@@ -8,6 +8,7 @@
   --color-line: rgba(232, 241, 248, 0.22);
   --color-text: #e8f1f8;
   --color-muted: #9dbad2;
+  --font-display: var(--font-display);
 }
 
 html {

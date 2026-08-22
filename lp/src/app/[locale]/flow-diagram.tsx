@@ -65,7 +65,7 @@ export function FlowDiagram({
         </g>
 
         <g fill="#9dbad2" fontFamily={LABEL} fontSize="12" letterSpacing="1">
-          <text x="12" y="132">
+          <text x="12" y="148">
             {drive}
           </text>
           <text x="12" y="180">

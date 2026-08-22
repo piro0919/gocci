@@ -31,7 +31,7 @@ export default async function Page({ params }: PageProps) {
           <span className="font-mono text-muted text-xs tracking-wider">
             {t("hero.badge")}
           </span>
-          <h1 className="mt-6 whitespace-pre-line font-bold text-4xl leading-[1.15] tracking-tight sm:text-5xl">
+          <h1 className="mt-6 whitespace-pre-line font-display font-bold text-4xl leading-[1.15] tracking-tight sm:text-5xl">
             {t("hero.title")}
           </h1>
           <p className="mt-6 max-w-md text-lg text-muted leading-relaxed">
