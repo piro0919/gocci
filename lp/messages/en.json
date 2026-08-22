@@ -12,10 +12,51 @@
     "note": "Free and open source. The README walks through getting started"
   },
   "footer": {
-    "source": "GitHub"
+    "source": "GitHub",
+    "privacy": "Privacy"
   },
   "language": {
     "en": "EN",
     "ja": "日本語"
+  },
+  "privacy": {
+    "title": "Privacy Policy",
+    "updated": "Last updated: August 22, 2026",
+    "intro": "Gocci connects your Google Drive to Finder. That means Google credentials and your files are involved, so here is exactly where they go — and where they don't.",
+    "sections": [
+      {
+        "title": "Nothing passes through me",
+        "body": "Your files move between your Mac and Google directly. There is no server of mine anywhere in that path, and I never see your files, your file names, or your account. I could not collect them if I wanted to; nothing in the app points anywhere except Google and your own machine."
+      },
+      {
+        "title": "Where your Google credentials live",
+        "body": "Signing in opens Google's own consent screen in your browser. The token that comes back is written to rclone's configuration file on your Mac, at ~/.config/rclone/rclone.conf, which is the same place rclone would keep it if you had set it up by hand. Gocci deliberately does not copy the token or the client credentials anywhere else — one copy in one place, held by the tool that actually uses it."
+      },
+      {
+        "title": "About the client ID",
+        "body": "If you leave the client ID and secret blank, rclone falls back to the shared credentials it ships with, which is rclone's own arrangement with Google and is documented on their side. Putting in your own from Google Cloud Console is supported, and those are stored the same way — in rclone's config file, on your Mac."
+      },
+      {
+        "title": "The local control port",
+        "body": "Gocci drives rclone through rclone's remote control interface, which is opened on 127.0.0.1 only, on a fresh port each launch, behind a passphrase regenerated every time the app starts. Nothing outside your Mac can reach it."
+      },
+      {
+        "title": "Update checks go to GitHub",
+        "body": "Gocci checks for a new version once when it starts, not on a timer. The check fetches a small file from its GitHub Releases page, so GitHub sees the request the way it sees any download, including your IP address. Nothing about your Drive is included."
+      },
+      {
+        "title": "No analytics, ever",
+        "body": "There is no crash reporting, no usage tracking, no unique identifier, and no third-party SDK of any kind in the app."
+      },
+      {
+        "title": "You can check all of this",
+        "body": "Gocci is open source under the MIT license, so none of the above has to be taken on trust. Read the source, or open an issue if something looks wrong."
+      },
+      {
+        "title": "Changes",
+        "body": "If a future version starts doing something new with your data, this page gets updated before that version ships."
+      }
+    ],
+    "back": "Back to Gocci"
   }
 }

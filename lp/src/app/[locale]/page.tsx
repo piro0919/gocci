@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import { Link } from "@/i18n/navigation";
 import { LanguageSwitch } from "./language-switch";
 
 const REPO = "https://github.com/piro0919/gocci";
@@ -69,6 +70,10 @@ export default async function Page({ params }: PageProps) {
           <a className="cursor-pointer font-bold hover:text-text" href={REPO}>
             {t("footer.source")}
           </a>
+          <span className="px-3">·</span>
+          <Link className="cursor-pointer font-bold hover:text-text" href="/privacy">
+            {t("footer.privacy")}
+          </Link>
         </div>
       </footer>
     </div>
