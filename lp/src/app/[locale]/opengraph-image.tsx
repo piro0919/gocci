@@ -34,9 +34,11 @@ export default async function Image({ params }: Props) {
       <div
         style={{
           alignItems: "center",
-          backgroundColor: "#05101f",
+          backgroundColor: "#0d2c52",
+          // 本体と同じ方眼。細い目と太い目を重ねる
           backgroundImage:
-            "radial-gradient(70% 90% at 15% 0%, rgba(41,199,192,0.30) 0%, rgba(5,16,31,0) 60%), radial-gradient(60% 80% at 95% 100%, rgba(23,85,159,0.55) 0%, rgba(5,16,31,0) 60%)",
+            "linear-gradient(rgba(232,241,248,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(232,241,248,0.05) 1px, transparent 1px), linear-gradient(rgba(232,241,248,0.09) 1px, transparent 1px), linear-gradient(90deg, rgba(232,241,248,0.09) 1px, transparent 1px)",
+          backgroundSize: "24px 24px, 24px 24px, 120px 120px, 120px 120px",
           display: "flex",
           gap: 40,
           height: "100%",
@@ -47,9 +49,9 @@ export default async function Image({ params }: Props) {
         <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
           <div
             style={{
-              border: "1px solid #17304d",
-              borderRadius: 999,
-              color: "#8ba7c0",
+              alignSelf: "flex-start",
+              border: "1px solid rgba(232,241,248,0.22)",
+              color: "#9dbad2",
               display: "flex",
               fontSize: 24,
               marginBottom: 36,
@@ -68,7 +70,7 @@ export default async function Image({ params }: Props) {
             </div>
           ))}
 
-          <div style={{ color: "#8ba7c0", display: "flex", fontSize: 26, marginTop: 28 }}>
+          <div style={{ color: "#9dbad2", display: "flex", fontSize: 26, marginTop: 28 }}>
             {t("tagline")}
           </div>
         </div>
@@ -77,7 +79,7 @@ export default async function Image({ params }: Props) {
           alt=""
           height={300}
           src={iconSrc}
-          style={{ borderRadius: 67, boxShadow: "0 40px 90px rgba(41,199,192,0.35)" }}
+          style={{ borderRadius: 67 }}
           width={300}
         />
       </div>

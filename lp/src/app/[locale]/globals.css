@@ -1,18 +1,13 @@
 @import "tailwindcss";
 
 @theme {
-  /* アイコンの配色をそのまま持ってくる。上が明るい青緑、下が濃い藍 */
+  /* 青焼きの図面。方眼の紙に白の線、寸法だけ青緑で入れる */
   --color-teal: #29c7c0;
-  --color-teal-deep: #17a3a6;
-  --color-navy: #17559f;
-  --color-navy-deep: #0b2f5e;
-
-  /* 地は藍を落としたところまで暗くする。道具の画面と地続きに見せたい */
-  --color-ink: #05101f;
-  --color-surface: #0b1a2d;
-  --color-line: #17304d;
+  --color-blueprint: #0d2c52;
+  --color-blueprint-2: #0a2444;
+  --color-line: rgba(232, 241, 248, 0.22);
   --color-text: #e8f1f8;
-  --color-muted: #8ba7c0;
+  --color-muted: #9dbad2;
 }
 
 html {
@@ -20,7 +15,7 @@ html {
 }
 
 body {
-  background: var(--color-ink);
+  background: var(--color-blueprint);
   color: var(--color-text);
 
   /* 日本語を語のまとまりで折り返す。これが無いと見出しが「を、」や
@@ -28,36 +23,22 @@ body {
   word-break: auto-phrase;
 }
 
-/* 見出しの奥に置く光。上端の青緑から沈む。帯で塗り分けるより、
-   一枚の空間の中で明るさが変わるほうがアイコンの見え方に近い */
-.aurora {
-  background:
-    radial-gradient(120% 80% at 50% -20%, rgba(41, 199, 192, 0.28) 0%, transparent 60%),
-    radial-gradient(90% 60% at 80% 10%, rgba(23, 85, 159, 0.35) 0%, transparent 55%);
+::selection {
+  background: color-mix(in srgb, var(--color-teal) 35%, transparent);
 }
 
-/* 面の区切り。線は引かず、明るさの差だけで分ける */
-.panel {
-  background: linear-gradient(180deg, rgba(23, 48, 77, 0.35) 0%, rgba(11, 26, 45, 0) 100%);
-}
-
-/* 箱。白で塗らず、地より少しだけ明るくする */
-.card {
-  background: linear-gradient(180deg, rgba(23, 48, 77, 0.45) 0%, rgba(11, 26, 45, 0.65) 100%);
-  border: 1px solid var(--color-line);
-}
-
-.card-glow {
-  position: relative;
-}
-
-/* 上辺だけ光らせる。境目をはっきりさせずに、面の手前側を示す */
-.card-glow::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(41, 199, 192, 0.5), transparent);
+/* 方眼。細い目を 24px、太い目を 120px で重ねる */
+.grid-paper {
+  background-image:
+    linear-gradient(rgba(232, 241, 248, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232, 241, 248, 0.05) 1px, transparent 1px),
+    linear-gradient(rgba(232, 241, 248, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232, 241, 248, 0.09) 1px, transparent 1px);
+  background-size:
+    24px 24px,
+    24px 24px,
+    120px 120px,
+    120px 120px;
 }
 
 /* 押せるものは動く。150〜300ms に収める */
@@ -69,7 +50,6 @@ body {
 
 .lift:hover {
   transform: translateY(-2px);
-  border-color: rgba(41, 199, 192, 0.45);
 }
 
 @media (prefers-reduced-motion: reduce) {

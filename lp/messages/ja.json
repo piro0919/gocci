@@ -58,5 +58,13 @@
       }
     ],
     "back": "Gocci に戻る"
+  },
+  "diagram": {
+    "drive": "Google ドライブ",
+    "finder": "Finder",
+    "disk": "選んだディスク",
+    "flowTop": "見えるだけ",
+    "flowBottom": "落とした分",
+    "caption": "図: ファイルが置かれる場所"
   }
 }

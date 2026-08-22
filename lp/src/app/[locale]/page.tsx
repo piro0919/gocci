@@ -1,6 +1,6 @@
-import Image from "next/image";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
+import { FlowDiagram } from "./flow-diagram";
 import { LanguageSwitch } from "./language-switch";
 
 const REPO = "https://github.com/piro0919/gocci";
@@ -17,53 +17,55 @@ export default async function Page({ params }: PageProps) {
   const t = await getTranslations();
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="grid-paper flex min-h-dvh flex-col">
       {/* 一画面に収める。やることが一つしかないので、説明を足すほど嘘くさくなる */}
-      <header className="aurora relative flex flex-1 flex-col overflow-hidden px-6 pt-8 pb-20">
+      <header className="px-6 pt-6">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between">
-          <span className="font-bold text-lg tracking-tight">Gocci</span>
+          <span className="font-mono text-sm tracking-[0.3em]">GOCCI</span>
           <LanguageSwitch />
         </div>
+      </header>
 
-        <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center gap-14 py-16 lg:flex-row lg:py-24">
-          <div className="text-center lg:flex-1 lg:text-left">
-            <span className="inline-block rounded-full border border-line bg-surface/60 px-3 py-1 text-muted text-sm">
-              {t("hero.badge")}
-            </span>
-            <h1 className="mt-7 whitespace-pre-line font-bold text-4xl leading-[1.15] tracking-tight sm:text-6xl">
-              {t("hero.title")}
-            </h1>
-            <p className="mt-6 max-w-xl text-lg text-muted leading-relaxed">
-              {t("hero.tagline")}
-            </p>
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center gap-14 px-6 py-14 lg:flex-row lg:items-center lg:gap-16 lg:py-20">
+        <div className="min-w-0 lg:flex-1">
+          <span className="font-mono text-muted text-xs tracking-wider">
+            {t("hero.badge")}
+          </span>
+          <h1 className="mt-6 whitespace-pre-line font-bold text-4xl leading-[1.15] tracking-tight sm:text-5xl">
+            {t("hero.title")}
+          </h1>
+          <p className="mt-6 max-w-md text-lg text-muted leading-relaxed">
+            {t("hero.tagline")}
+          </p>
 
-            <div className="mt-10 flex flex-wrap items-center justify-center gap-4 lg:justify-start">
-              <a
-                className="lift cursor-pointer rounded-full bg-teal px-8 py-3.5 font-bold text-ink hover:bg-teal/90"
-                href={DOWNLOAD}
-              >
-                {t("hero.download")}
-              </a>
-              <a
-                className="lift cursor-pointer rounded-full border border-line px-8 py-3.5 font-bold hover:bg-surface"
-                href={REPO}
-              >
-                {t("hero.source")}
-              </a>
-            </div>
-            <p className="mt-5 text-muted text-sm">{t("hero.note")}</p>
+          <div className="mt-10 flex flex-col gap-3 sm:flex-row">
+            <a
+              className="lift bg-teal px-8 py-3.5 text-center font-bold text-blueprint hover:bg-text"
+              href={DOWNLOAD}
+            >
+              {t("hero.download")}
+            </a>
+            <a
+              className="lift border border-line px-8 py-3.5 text-center font-bold hover:border-teal"
+              href={REPO}
+            >
+              {t("hero.source")}
+            </a>
           </div>
+          <p className="mt-5 text-muted text-sm">{t("hero.note")}</p>
+        </div>
 
-          <Image
-            alt="Gocci"
-            className="w-44 rounded-[22%] shadow-[0_30px_80px_-20px_rgba(41,199,192,0.45)] sm:w-60"
-            height={512}
-            priority={true}
-            src="/icon.png"
-            width={512}
+        <div className="min-w-0 lg:flex-1">
+          <FlowDiagram
+            caption={t("diagram.caption")}
+            disk={t("diagram.disk")}
+            drive={t("diagram.drive")}
+            finder={t("diagram.finder")}
+            flowBottom={t("diagram.flowBottom")}
+            flowTop={t("diagram.flowTop")}
           />
         </div>
-      </header>
+      </main>
 
       <footer className="border-line border-t px-6 py-8">
         <div className="mx-auto flex max-w-5xl justify-end text-muted text-sm">
@@ -71,7 +73,10 @@ export default async function Page({ params }: PageProps) {
             {t("footer.source")}
           </a>
           <span className="px-3">·</span>
-          <Link className="cursor-pointer font-bold hover:text-text" href="/privacy">
+          <Link
+            className="cursor-pointer font-bold hover:text-text"
+            href="/privacy"
+          >
             {t("footer.privacy")}
           </Link>
         </div>

@@ -58,5 +58,13 @@
       }
     ],
     "back": "Back to Gocci"
+  },
+  "diagram": {
+    "drive": "Google Drive",
+    "finder": "Finder",
+    "disk": "The disk you pick",
+    "flowTop": "Listed only",
+    "flowBottom": "Downloaded",
+    "caption": "Fig. where the files actually sit"
   }
 }
