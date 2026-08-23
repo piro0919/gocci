@@ -24,10 +24,10 @@ export default async function Image({ params }: Props) {
   const { locale } = await params;
   const isJa = locale === "ja";
 
-  /* 見出しの書体はサイトと同じ M PLUS 1 Code。使う文字だけに絞ったものを
-     同梱している。文言を変えたら assets/README.md の手順で作り直す */
+  /* 見出しの書体。等幅は図面の見立てに合わせたものだったが、
+     ヒーローが Finder の実画面になったので普通の角ゴシックに戻した */
   const [font, icon] = await Promise.all([
-    readFile(join(process.cwd(), "assets/MPLUS1Code-700-subset.ttf")),
+    readFile(join(process.cwd(), "assets/MPLUS2-500-subset.ttf")),
     readFile(join(process.cwd(), "public/icon.png")),
   ]);
   const iconSrc = `data:image/png;base64,${icon.toString("base64")}`;
@@ -44,13 +44,13 @@ export default async function Image({ params }: Props) {
           backgroundSize: "24px 24px, 24px 24px, 120px 120px, 120px 120px",
           color: PAPER,
           display: "flex",
-          gap: 60,
+          gap: 56,
           height: "100%",
-          padding: "0 84px",
+          justifyContent: "center",
           width: "100%",
         }}
       >
-        <img alt="" height={300} src={iconSrc} width={300} />
+        <img alt="" height={230} src={iconSrc} width={230} />
         <div style={{ display: "flex", flexDirection: "column" }}>
           <div style={{ color: MUTED, display: "flex", fontSize: 24 }}>
             macOS 14+ / Apple silicon
@@ -58,7 +58,7 @@ export default async function Image({ params }: Props) {
           <div
             style={{
               display: "flex",
-              fontSize: 132,
+              fontSize: 108,
               letterSpacing: -4,
               marginTop: 14,
             }}
@@ -75,7 +75,7 @@ export default async function Image({ params }: Props) {
     ),
     {
       ...size,
-      fonts: [{ data: font, name: "M PLUS 1 Code", style: "normal", weight: 700 }],
+      fonts: [{ data: font, name: "M PLUS 2", style: "normal", weight: 500 }],
     },
   );
 }
