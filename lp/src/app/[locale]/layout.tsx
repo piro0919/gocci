@@ -6,6 +6,7 @@ import { hasLocale, NextIntlClientProvider } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { ReactNode } from "react";
 import { routing } from "@/i18n/routing";
+import { languageAlternates, localePath, ogAlternateLocales, ogLocale } from "@/i18n/urls";
 import "./globals.css";
 
 // 道具の話をするページなので、字面は素直なゴシックにする。
@@ -46,16 +47,16 @@ export async function generateMetadata({
     description: t("description"),
     icons: { icon: "/icon.png" },
     alternates: {
-      canonical: locale === routing.defaultLocale ? "/" : `/${locale}`,
-      languages: Object.fromEntries(
-        routing.locales.map((one) => [one, one === routing.defaultLocale ? "/" : `/${one}`]),
-      ),
+      canonical: localePath(locale),
+      languages: languageAlternates(),
     },
     metadataBase: new URL("https://gocci.kkweb.io"),
     // 画像は opengraph-image.tsx が出す。ここで指定すると、そちらが使われなくなる
     openGraph: {
+      locale: ogLocale(locale),
+      alternateLocale: ogAlternateLocales(locale),
       description: t("description"),
-      url: locale === routing.defaultLocale ? "/" : `/${locale}`,
+      url: localePath(locale),
       title: t("title"),
       type: "website",
     },
