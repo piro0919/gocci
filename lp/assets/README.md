@@ -25,3 +25,19 @@ Then check both cards render in one weight:
 pnpm dev
 open http://localhost:3000/ja/opengraph-image http://localhost:3000/en/opengraph-image
 ```
+
+`MPLUS1Code-700-subset.ttf` is the face drawn into the card now — the same
+display face the site uses for its headings. `NotoSansJP-Bold-subset.otf` is
+the previous one and is no longer referenced.
+
+```sh
+curl -sL -o /tmp/MPLUS1Code.ttf \
+  "https://github.com/google/fonts/raw/main/ofl/mplus1code/MPLUS1Code%5Bwght%5D.ttf"
+fonttools varLib.instancer /tmp/MPLUS1Code.ttf wght=700 -o /tmp/MPLUS1Code-700.ttf
+
+pyftsubset /tmp/MPLUS1Code-700.ttf \
+  --text="Gocci Google ドライブを Finder に繋ぐ。Google Drive in Finder. macOS 14+ / Apple silicon" \
+  --unicodes="U+0020-007E,U+00A0-00FF,U+2010-2027,U+3000-303F,U+30FB" \
+  --output-file=assets/MPLUS1Code-700-subset.ttf \
+  --no-hinting --desubroutinize --layout-features=''
+```
