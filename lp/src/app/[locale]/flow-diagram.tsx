@@ -71,7 +71,7 @@ export function FlowDiagram({
           <text x="12" y="180">
             {finder}
           </text>
-          <text x="328" y="344">
+          <text x="328" y="336">
             {disk}
           </text>
         </g>
@@ -79,7 +79,7 @@ export function FlowDiagram({
           <text x="162" y="160">
             {flowTop}
           </text>
-          <text x="232" y="378">
+          <text x="236" y="368">
             {flowBottom}
           </text>
         </g>
