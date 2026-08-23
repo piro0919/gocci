@@ -1,6 +1,6 @@
+import Image from "next/image";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
-import { FlowDiagram } from "./flow-diagram";
 import { LanguageSwitch } from "./language-switch";
 
 const REPO = "https://github.com/piro0919/gocci";
@@ -55,14 +55,16 @@ export default async function Page({ params }: PageProps) {
           <p className="mt-5 text-muted text-sm">{t("hero.note")}</p>
         </div>
 
+        {/* 実際の Finder。同種のマウント系はどれも「ファイラに載った状態」を
+            見せていて、図より実物のほうが伝わる */}
         <div className="min-w-0 lg:flex-1">
-          <FlowDiagram
-            caption={t("diagram.caption")}
-            disk={t("diagram.disk")}
-            drive={t("diagram.drive")}
-            finder={t("diagram.finder")}
-            flowBottom={t("diagram.flowBottom")}
-            flowTop={t("diagram.flowTop")}
+          <Image
+            alt={t("diagram.caption")}
+            className="w-full border border-line"
+            height={900}
+            priority={true}
+            src="/screenshot-finder.png"
+            width={1960}
           />
         </div>
       </main>
