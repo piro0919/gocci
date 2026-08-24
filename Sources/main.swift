@@ -8,6 +8,10 @@ import AppKit
 @main
 enum Gocci {
     static func main() {
+        // 画面を出さずに判断だけ確かめる口。直したあとはこれを通す
+        if CommandLine.arguments.contains("--selftest") {
+            exit(SelfTest.run())
+        }
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate

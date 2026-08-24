@@ -114,6 +114,7 @@ open Gocci.app
 
 ```bash
 ./test.sh            # check the built app (touches nothing else)
+./Gocci.app/Contents/MacOS/Gocci --selftest   # listing and eviction decisions
 ./icon.sh            # regenerate the menu bar mark preview at its real size
 ./release.sh 1.0.0   # build, sign the appcast, publish to GitHub Releases
 ```

@@ -73,19 +73,7 @@ enum Materialized {
         list(in: domain) { items in
             let total = items.reduce(0) { $0 + $1.bytes }
             guard total > limit else { return completion(0, 0) }
-
-            // 古く落としたものから。同じ時刻なら大きいものを先に捨てる
-            let ordered = items.sorted {
-                $0.downloaded == $1.downloaded
-                    ? $0.bytes > $1.bytes : $0.downloaded < $1.downloaded
-            }
-
-            var over = total - limit
-            var chosen: [MaterializedItem] = []
-            for item in ordered where over > 0 {
-                chosen.append(item)
-                over -= item.bytes
-            }
+            let chosen = overflow(items: items, limit: limit)
 
             materializedLogger.info(
                 "上限を超えた: \(total) / \(limit) バイト。\(chosen.count) 件を捨てる")
@@ -116,6 +104,29 @@ enum Materialized {
                 completion(freed, dropped)
             }
         }
+    }
+
+    /// 上限を超えた分として捨てる相手を選ぶ。
+    ///
+    /// 古く落としたものから順に、超過分が埋まるまで積む。同じ時刻なら大きいものを
+    /// 先に捨てる。捨てる件数が少なくて済むので、往復の回数が減る。
+    /// 合計が上限に収まっているなら誰も選ばない。
+    static func overflow(items: [MaterializedItem], limit: Int64) -> [MaterializedItem] {
+        let total = items.reduce(0) { $0 + $1.bytes }
+        guard limit > 0, total > limit else { return [] }
+
+        let ordered = items.sorted {
+            $0.downloaded == $1.downloaded
+                ? $0.bytes > $1.bytes : $0.downloaded < $1.downloaded
+        }
+
+        var over = total - limit
+        var chosen: [MaterializedItem] = []
+        for item in ordered where over > 0 {
+            chosen.append(item)
+            over -= item.bytes
+        }
+        return chosen
     }
 
     /// 識別子を1件ずつ実ファイルに引き当てて、大きさと日付を読む。

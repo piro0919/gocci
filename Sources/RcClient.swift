@@ -283,18 +283,39 @@ struct RcClient {
         }
     }
 
-    private static func entry(from raw: [String: Any]) -> Entry? {
-        guard let name = raw["Name"] as? String else { return nil }
-
+    /// 小数秒つきの時刻を読む器。一覧の件数ぶん呼ばれるので使い回す
+    private static let fractionalStamp: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    /// 小数秒の付かない時刻を読む器
+    private static let plainStamp: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    /// rclone が返す更新時刻を読む。
+    ///
+    /// 小数秒が付くかどうかは元の置き場による。`ISO8601DateFormatter` は
+    /// `.withFractionalSeconds` を付けると小数秒を必須にし、外すと今度は
+    /// 小数秒つきを弾くので、両方を順に当てる。どちらでも読めなければ nil。
+    static func timestamp(_ raw: String) -> Date? {
+        fractionalStamp.date(from: raw) ?? plainStamp.date(from: raw)
+    }
+
+    static func entry(from raw: [String: Any]) -> Entry? {
+        guard let name = raw["Name"] as? String else { return nil }
+
         let stamp = (raw["ModTime"] as? String) ?? ""
 
         return Entry(
             name: name,
             size: (raw["Size"] as? NSNumber)?.int64Value ?? 0,
             isDirectory: (raw["IsDir"] as? Bool) ?? false,
-            modified: formatter.date(from: stamp) ?? Date(timeIntervalSince1970: 0),
+            modified: timestamp(stamp) ?? Date(timeIntervalSince1970: 0),
             id: (raw["ID"] as? String) ?? name)
     }
 
