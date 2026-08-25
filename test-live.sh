@@ -252,7 +252,7 @@ if [ -e "$DRIVE/$WORK/sample.png" ]; then
     where=$(df "$DRIVE/$WORK/sample.png" 2>/dev/null | awk 'NR==2 {print $NF}')
     root=$(df / 2>/dev/null | awk 'NR==2 {print $NF}')
     if [ "$where" = "$root" ]; then
-      echo "  ・置き場所は起動ディスク（$where）"
+      echo "  ・置き場所は起動ディスク（${where}）"
     else
       pass "落ちた分は $where に入る"
     fi
