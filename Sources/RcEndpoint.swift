@@ -17,7 +17,8 @@ enum RcEndpoint {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(
                 "Library/Containers/io.kkweb.gocci.FileProvider/Data/Library/Application Support",
-                isDirectory: true)
+                isDirectory: true
+            )
             .appendingPathComponent(fileName)
     }
 

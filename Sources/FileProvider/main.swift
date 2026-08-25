@@ -139,7 +139,8 @@ final class Ledger {
     init() { load() }
 
     func noteListed(_ directory: String) {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         listedAt[directory] = Date()
     }
 
@@ -151,19 +152,22 @@ final class Ledger {
     }
 
     func recall(_ identifier: NSFileProviderItemIdentifier) -> Item? {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         return entries[identifier.rawValue]
     }
 
     /// 道から識別子を引く。親を辿るのに使う
     func identifier(forPath path: String) -> NSFileProviderItemIdentifier? {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         return entries.values.first { $0.path == path }?.itemIdentifier
     }
 
     /// そのフォルダの直下として覚えているもの。変化の突き合わせに使う
     func children(of directory: String) -> [Item] {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         return entries.values.filter {
             ($0.path as NSString).deletingLastPathComponent == directory
         }
@@ -175,7 +179,8 @@ final class Ledger {
     /// （`NSFileProviderItem.h` 30-36行）
     func recent() -> [Item] {
         let directories = Set(recentDirectories())
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         return entries.values.filter {
             directories.contains(($0.path as NSString).deletingLastPathComponent)
         }
@@ -187,7 +192,8 @@ final class Ledger {
     /// （2026-08-16 実測。2周で 1159 件から 5581 件に膨らんだ）。
     /// 人が最近開いたところだけにする。閉じた場所の変化は、開き直したときに拾えばいい
     func recentDirectories(within age: TimeInterval = 1800, limit: Int = 20) -> [String] {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
 
         let fresh = listedAt.filter { Date().timeIntervalSince($0.value) < age }
             .sorted { $0.value > $1.value }
@@ -896,7 +902,8 @@ extension GocciFileProvider: NSFileProviderPartialContentFetching {
         for itemIdentifier: NSFileProviderItemIdentifier, version requestedVersion: NSFileProviderItemVersion,
         request: NSFileProviderRequest, minimalRange requestedRange: NSRange,
         aligningTo alignment: Int, options: NSFileProviderFetchContentsOptions = [],
-        completionHandler: @escaping (URL?, NSFileProviderItem?, NSRange, NSFileProviderMaterializationFlags, Error?) -> Void
+        completionHandler:
+            @escaping (URL?, NSFileProviderItem?, NSRange, NSFileProviderMaterializationFlags, Error?) -> Void
     ) -> Progress {
         let progress = Progress(totalUnitCount: 1)
 

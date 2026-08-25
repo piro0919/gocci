@@ -24,31 +24,36 @@ enum SelfTest {
             check(entry?.id == "abc123", "Drive 側の識別子を読む")
 
             // 名前が無ければ何も作れない
-            check(RcClient.entry(from: ["Size": NSNumber(value: 1)]) == nil,
-                  "名前が無ければ読まない")
+            check(
+                RcClient.entry(from: ["Size": NSNumber(value: 1)]) == nil,
+                "名前が無ければ読まない")
 
             // 識別子を返さない置き場があるので、そのときは名前で代える
-            check(RcClient.entry(from: ["Name": "no-id.txt"])?.id == "no-id.txt",
-                  "識別子が無ければ名前で代える")
+            check(
+                RcClient.entry(from: ["Name": "no-id.txt"])?.id == "no-id.txt",
+                "識別子が無ければ名前で代える")
             check(RcClient.entry(from: ["Name": "x"])?.size == 0, "大きさが無ければ 0")
-            check(RcClient.entry(from: ["Name": "x"])?.isDirectory == false,
-                  "種別が無ければファイル扱い")
+            check(
+                RcClient.entry(from: ["Name": "x"])?.isDirectory == false,
+                "種別が無ければファイル扱い")
         }
 
         // 更新時刻。小数秒が付くかどうかは元の置き場による
         do {
             check(RcClient.timestamp("2026-08-16T12:34:56.789Z") != nil, "小数秒つきを読む")
             check(RcClient.timestamp("2026-08-16T12:34:56Z") != nil, "小数秒なしも読む")
-            check(RcClient.timestamp("2026-08-16T12:34:56.789Z")
+            check(
+                RcClient.timestamp("2026-08-16T12:34:56.789Z")
                     == RcClient.timestamp("2026-08-16T12:34:56Z")?.addingTimeInterval(0.789),
-                  "小数秒ぶんだけ差が出る")
+                "小数秒ぶんだけ差が出る")
             check(RcClient.timestamp("") == nil, "空文字は読めない")
             check(RcClient.timestamp("2026-08-16") == nil, "日付だけでは読めない")
 
             // 読めなかったときは 1970 に落として、一番古いものとして扱う
-            check(RcClient.entry(from: ["Name": "x", "ModTime": "こわれた"])?.modified
+            check(
+                RcClient.entry(from: ["Name": "x", "ModTime": "こわれた"])?.modified
                     == Date(timeIntervalSince1970: 0),
-                  "読めない時刻は 1970 になる")
+                "読めない時刻は 1970 になる")
         }
 
         // 上限を超えた分として捨てる相手を選ぶ
@@ -66,10 +71,12 @@ enum SelfTest {
                 item("middle.bin", 100, minutesAgo: 50),
             ]
 
-            check(Materialized.overflow(items: items, limit: 300).isEmpty,
-                  "上限に収まっていれば誰も捨てない")
-            check(Materialized.overflow(items: items, limit: 1000).isEmpty,
-                  "上限が余っていても捨てない")
+            check(
+                Materialized.overflow(items: items, limit: 300).isEmpty,
+                "上限に収まっていれば誰も捨てない")
+            check(
+                Materialized.overflow(items: items, limit: 1000).isEmpty,
+                "上限が余っていても捨てない")
 
             // 300 のうち 250 まで。超過は 50 なので、一番古いものひとつで足りる
             let one = Materialized.overflow(items: items, limit: 250)
@@ -84,13 +91,16 @@ enum SelfTest {
                 item("small.bin", 10, minutesAgo: 10),
                 item("large.bin", 200, minutesAgo: 10),
             ]
-            check(Materialized.overflow(items: sameTime, limit: 100).map(\.filename)
+            check(
+                Materialized.overflow(items: sameTime, limit: 100).map(\.filename)
                     == ["large.bin"], "同じ時刻なら大きいものを先に捨てる")
 
-            check(Materialized.overflow(items: items, limit: 0).isEmpty,
-                  "上限が 0 なら何もしない")
-            check(Materialized.overflow(items: [], limit: 100).isEmpty,
-                  "手元に何も無ければ何もしない")
+            check(
+                Materialized.overflow(items: items, limit: 0).isEmpty,
+                "上限が 0 なら何もしない")
+            check(
+                Materialized.overflow(items: [], limit: 100).isEmpty,
+                "手元に何も無ければ何もしない")
         }
 
         print(failures == 0 ? "全部通りました" : "\(failures) 件こけました")

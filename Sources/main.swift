@@ -30,7 +30,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let finderItem = NSMenuItem()
     private let toggleItem = NSMenuItem()
 
-
     /// 失敗しているときだけ動く点滅
     private var blinkTimer: Timer?
     private var blinkOn = true
@@ -199,7 +198,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             toggleItem.isEnabled = false
         }
     }
-
 
     /// 失敗しているときだけ動く点滅。
     ///

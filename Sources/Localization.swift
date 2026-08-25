@@ -102,5 +102,4 @@ enum L {
         t("切り替えられませんでした: \(reason)", "Could not change it: \(reason)")
     }
 
-
 }

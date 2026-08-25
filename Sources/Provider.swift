@@ -27,7 +27,9 @@ final class Provider {
     private(set) var state: State = .off {
         didSet {
             guard state != oldValue else { return }
-            providerLogger.info("状態: \(String(describing: oldValue), privacy: .public) → \(String(describing: self.state), privacy: .public)")
+            providerLogger.info(
+                "状態: \(String(describing: oldValue), privacy: .public) → \(String(describing: self.state), privacy: .public)"
+            )
             NotificationCenter.default.post(name: .providerStateChanged, object: nil)
         }
     }
@@ -235,7 +237,8 @@ final class Provider {
         let url = URL(fileURLWithPath: volume)
         let values = try? url.resourceValues(forKeys: [.volumeURLKey, .volumeNameKey, .isVolumeKey])
         providerLogger.info(
-            "渡す先: \(url.path, privacy: .public) / ボリュームか \(values?.isVolume ?? false) / ボリューム名 \(values?.volumeName ?? "不明", privacy: .public)")
+            "渡す先: \(url.path, privacy: .public) / ボリュームか \(values?.isVolume ?? false) / ボリューム名 \(values?.volumeName ?? "不明", privacy: .public)"
+        )
 
         let domain = NSFileProviderDomain(
             displayName: "Gocci", userInfo: ["owner": Self.mark],
@@ -319,7 +322,8 @@ final class Provider {
             }
             for domain in domains {
                 providerLogger.info(
-                    "繋ぎ: \(domain.identifier.rawValue, privacy: .public) / 名前 \(domain.displayName, privacy: .public) / 切れている \(domain.isDisconnected)")
+                    "繋ぎ: \(domain.identifier.rawValue, privacy: .public) / 名前 \(domain.displayName, privacy: .public) / 切れている \(domain.isDisconnected)"
+                )
             }
             providerLogger.info("繋ぎは全部で \(domains.count) 件")
             Task { @MainActor in completion() }
@@ -474,7 +478,6 @@ final class Provider {
             }
         }
     }
-
 
     // MARK: - Drive 側の変化
 

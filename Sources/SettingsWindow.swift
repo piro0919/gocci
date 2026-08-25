@@ -62,8 +62,6 @@ final class SettingsWindowController: NSWindowController {
         launchCheckbox.target = self
         launchCheckbox.action = #selector(toggleLaunch)
 
-
-
         languagePopUp.target = self
         languagePopUp.action = #selector(changeLanguage)
         for language in Language.allCases {
@@ -128,25 +126,26 @@ final class SettingsWindowController: NSWindowController {
         chooseVolume.bezelStyle = .rounded
         chooseVolume.isEnabled = Settings.canUseExternalVolume
 
-        let stack = NSStackView(views: rows + [
-            row(L.storage, volumeLabel, chooseVolume),
-            storageMessageRow,
-            divider(),
-            row(L.clientID, clientIDField),
-            row(L.clientSecret, clientSecretField),
-            links(),
-            connectHintRow,
-            divider(),
-            row(L.downloads, downloadedLabel, evictButton),
-            row(L.downloadLimit, limitPopUp),
-            evictMessageRow,
-            divider(),
-            row(L.language, languagePopUp),
-            checkboxRow(launchCheckbox),
-            messageRow,
-            buttons,
-            aligned(about),
-        ])
+        let stack = NSStackView(
+            views: rows + [
+                row(L.storage, volumeLabel, chooseVolume),
+                storageMessageRow,
+                divider(),
+                row(L.clientID, clientIDField),
+                row(L.clientSecret, clientSecretField),
+                links(),
+                connectHintRow,
+                divider(),
+                row(L.downloads, downloadedLabel, evictButton),
+                row(L.downloadLimit, limitPopUp),
+                evictMessageRow,
+                divider(),
+                row(L.language, languagePopUp),
+                checkboxRow(launchCheckbox),
+                messageRow,
+                buttons,
+                aligned(about),
+            ])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 14
@@ -198,7 +197,6 @@ final class SettingsWindowController: NSWindowController {
     /// チェックの行
     private func checkboxRow(_ checkbox: NSButton) -> NSView { aligned(checkbox) }
 
-
     func show() {
         // 開くたびに読み直す。設定画面の外（システム設定）で変えられることがあるため
         let available = RcloneConfig.driveRemotes()
@@ -206,7 +204,6 @@ final class SettingsWindowController: NSWindowController {
         remotePopUp.addItems(withTitles: available.isEmpty ? [Settings.remote] : available)
         remotePopUp.selectItem(withTitle: Settings.remote)
         if remotePopUp.indexOfSelectedItem < 0 { remotePopUp.selectItem(at: 0) }
-
 
         let credentials = RcloneConfig.values(of: Settings.remote)
         clientIDField.stringValue = credentials["client_id"] ?? ""
@@ -235,8 +232,6 @@ final class SettingsWindowController: NSWindowController {
         guard hasShown else { return }
     }
 
-
-
     @objc private func toggleLaunch() {
         let wanted = launchCheckbox.state == .on
         if let failure = Settings.setLaunchesAtLogin(wanted) {
@@ -252,14 +247,6 @@ final class SettingsWindowController: NSWindowController {
         guard let title = remotePopUp.titleOfSelectedItem else { return }
         Settings.remote = title
     }
-
-
-
-
-
-
-
-
 
     /// client_id を取りに行くための入口と、書き込みの実行
     private func links() -> NSView {
