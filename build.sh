@@ -99,8 +99,8 @@ cat > "$FP/Contents/Info.plist" <<PLIST
     <key>NSExtensionPointIdentifier</key><string>com.apple.fileprovider-nonui</string>
     <key>NSExtensionPrincipalClass</key><string>GocciFileProvider.GocciFileProvider</string>
     <key>NSExtensionFileProviderSupportsEnumeration</key><true/>
-    <!-- 外付けに置けるようにする。これが無いと `volumeURL` を指定した登録が
-         `3328 feature is not supported` で断られる。ヘッダには出てこないキーで、
+    <!-- 外付けに置けるようにする。これが無いと \`volumeURL\` を指定した登録が
+         \`3328 feature is not supported\` で断られる。ヘッダには出てこないキーで、
          CloudMounter の実物を見て見つけた（2026-08-17） -->
     <key>NSExtensionFileProviderAllowsExternalVolumes</key><true/>
     <!-- 右クリックに出す項目。File Provider の下では Finder 拡張のメニューが出ないので、
@@ -112,7 +112,7 @@ cat > "$FP/Contents/Info.plist" <<PLIST
         <string>io.kkweb.gocci.evict</string>
         <key>NSExtensionFileProviderActionName</key>
         <string>ダウンロードを削除</string>
-        <!-- 常に出す。`isDownloaded` で絞ろうとしたが、条件が効かなかった（2026-08-17 実測）。
+        <!-- 常に出す。\`isDownloaded\` で絞ろうとしたが、条件が効かなかった（2026-08-17 実測）。
              実体を持たないものに出ても、押したときに何も起きないだけで害はない -->
         <key>NSExtensionFileProviderActionActivationRule</key>
         <string>TRUEPREDICATE</string>
