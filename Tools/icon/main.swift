@@ -23,7 +23,6 @@ func placeholder(side: CGFloat) -> NSImage {
     guard let ctx = NSGraphicsContext.current?.cgContext else { return image }
 
     // 角丸にはしない。macOS 26 は透過の無い正方形を受け取ると自分で切り抜く
-    let bounds = CGRect(x: 0, y: 0, width: side, height: side)
     let gradient = CGGradient(
         colorsSpace: CGColorSpaceCreateDeviceRGB(),
         colors: [topColor.cgColor, bottomColor.cgColor] as CFArray, locations: [0, 1])!

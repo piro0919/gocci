@@ -1,5 +1,5 @@
 import CoreGraphics
-import FileProvider
+@preconcurrency import FileProvider
 import Foundation
 import ImageIO
 import OSLog
@@ -121,7 +121,8 @@ final class Trash: NSObject, NSFileProviderItem {
 ///
 /// ただし rclone に頼むときは道が要るので、ID から道を引けるようにしておく。拡張は
 /// しょっちゅう起き直るので、覚えた内容は手元のディスクにも残す
-final class Ledger {
+/// 中の辞書はすべて `lock` の内側でしか触らない。錠を自分で持っているので Sendable を約束する
+final class Ledger: @unchecked Sendable {
     static let shared = Ledger()
     private var entries: [String: Item] = [:]
     /// 消したもの。混ぜるときに蘇らせないための覚え
@@ -347,9 +348,7 @@ final class Enumerator: NSObject, NSFileProviderEnumerator {
     ) {
         let directories = Ledger.shared.recentDirectories()
         let group = DispatchGroup()
-        let lock = NSLock()
-        var changed: [Item] = []
-        var gone: [NSFileProviderItemIdentifier] = []
+        let harvest = Harvest()
 
         for base in directories {
             group.enter()
@@ -382,14 +381,12 @@ final class Enumerator: NSObject, NSFileProviderEnumerator {
                 let missing = remembered.filter { !seen.contains($0.itemIdentifier.rawValue) }
                 for item in missing { Ledger.shared.forget(item.itemIdentifier) }
 
-                lock.lock()
-                changed.append(contentsOf: mine)
-                gone.append(contentsOf: missing.map(\.itemIdentifier))
-                lock.unlock()
+                harvest.add(changed: mine, gone: missing.map(\.itemIdentifier))
             }
         }
 
         group.notify(queue: .global()) {
+            let (changed, gone) = harvest.result
             if !changed.isEmpty { observer.didUpdate(changed) }
             if !gone.isEmpty { observer.didDeleteItems(withIdentifiers: gone) }
             if !changed.isEmpty || !gone.isEmpty {
@@ -1081,5 +1078,25 @@ extension GocciFileProvider: NSFileProviderThumbnailing {
         CGImageDestinationAddImage(target, image, nil)
         guard CGImageDestinationFinalize(target) else { return nil }
         return data as Data
+    }
+}
+
+/// 見て回った結果を閉包から足し込むための箱。錠を中に持たせて、足す場所を一か所にする
+private final class Harvest: @unchecked Sendable {
+    private let lock = NSLock()
+    private var changed: [Item] = []
+    private var gone: [NSFileProviderItemIdentifier] = []
+
+    func add(changed newItems: [Item], gone newGone: [NSFileProviderItemIdentifier]) {
+        lock.lock()
+        changed.append(contentsOf: newItems)
+        gone.append(contentsOf: newGone)
+        lock.unlock()
+    }
+
+    var result: (changed: [Item], gone: [NSFileProviderItemIdentifier]) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (changed, gone)
     }
 }
