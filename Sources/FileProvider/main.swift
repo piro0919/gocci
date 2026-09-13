@@ -72,23 +72,17 @@ final class Item: NSObject, NSFileProviderItem {
                 .allowsRenaming, .allowsReparenting,
             ]
         }
-        // `allowsEvicting` は macOS 13 で非推奨。それでも外せない。
-        //
-        // 右クリックの「ダウンロードを削除」は Info.plist の
-        // NSExtensionFileProviderActions が出しているので、これとは関係が無い
-        // （2026-08-16 のコメントはこの旗が項目を出していると書いていたが、
-        // 翌日に独自の行動を足したので、今は当たらない）。
-        //
-        // 効くのは追い出しそのもの。SDK のヘッダいわく
-        // 「If this capability is not present, the item will never be evicted.」で、
-        // 手元の `evictItem` を3か所から呼んでいる以上、外すと全部効かなくなる。
-        // 置き換え先は contentPolicy の .downloadLazily だが、挙動が変わるので
-        // 実際に繋いだ Drive で確かめてから入れ替える
         return [
             .allowsReading, .allowsWriting, .allowsDeleting, .allowsRenaming, .allowsReparenting,
-            .allowsEvicting,
         ]
     }
+
+    /// 非推奨になった `allowsEvicting` の置き換え。
+    ///
+    /// 読まれたときに落としてきて、空き容量が減ったときや頼まれたときには手放してよい、
+    /// という宣言。macOS では根の既定値でもある。これを宣言しないと既定は
+    /// `.inherited` で、根から降りてくる方針に従う
+    var contentPolicy: NSFileProviderContentPolicy { .downloadLazily }
 
     var itemVersion: NSFileProviderItemVersion {
         NSFileProviderItemVersion(
