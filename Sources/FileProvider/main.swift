@@ -796,7 +796,7 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
         let path = known.path
         let isDirectory = known.isDirectory
 
-        let finish: (Result<Void, Error>) -> Void = { result in
+        let finish: @Sendable (Result<Void, Error>) -> Void = { result in
             progress.completedUnitCount = 1
             switch result {
             case .failure(let error):

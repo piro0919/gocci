@@ -27,7 +27,7 @@ struct RcClient {
     }
 
     /// フォルダの中身を並べる。`path` はマウント先から見た道で、根は空文字
-    func list(_ path: String, completion: @escaping (Result<[Entry], Error>) -> Void) {
+    func list(_ path: String, completion: @escaping @Sendable (Result<[Entry], Error>) -> Void) {
         call("operations/list", ["fs": connection.remote, "remote": path]) { result in
             switch result {
             case .failure(let error):
@@ -41,7 +41,7 @@ struct RcClient {
 
     /// ファイルを1つ手元へ落とす。落とし先は呼ぶ側が決める
     func copy(
-        path: String, to destination: URL, completion: @escaping (Result<Void, Error>) -> Void
+        path: String, to destination: URL, completion: @escaping @Sendable (Result<Void, Error>) -> Void
     ) {
         let directory = destination.deletingLastPathComponent().path
         let name = destination.lastPathComponent
@@ -61,7 +61,7 @@ struct RcClient {
 
     /// 中身を配る口を立てる。合言葉は付けない——127.0.0.1 にだけ開くのと、
     /// 港を毎回変えるので、そこは問い合わせ口と同じ考え方にしてある
-    func startHTTPServer(on port: UInt16, completion: @escaping (Result<Void, Error>) -> Void) {
+    func startHTTPServer(on port: UInt16, completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
         call(
             "serve/start",
             ["type": "http", "fs": connection.remote, "addr": "127.0.0.1:\(port)"]
@@ -75,7 +75,7 @@ struct RcClient {
     /// 同じ考え方）。範囲が返ってこない相手なら、丸ごと返ってくる
     func fetchRange(
         path: String, offset: Int64, length: Int64,
-        completion: @escaping (Result<Data, Error>) -> Void
+        completion: @escaping @Sendable (Result<Data, Error>) -> Void
     ) {
         // 道はそのまま URL の一部になる。空白や日本語が入るので必ず逃がす
         let escaped =
@@ -113,7 +113,7 @@ struct RcClient {
     /// 終わりに一度だけ埋めると、止まったまま急に満了する
     func download(
         path: String, to destination: URL, reporting progress: Progress,
-        completion: @escaping (Result<Void, Error>) -> Void
+        completion: @escaping @Sendable (Result<Void, Error>) -> Void
     ) {
         let escaped =
             path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
@@ -139,17 +139,20 @@ struct RcClient {
 
     /// 届いた端からファイルへ書く係。`URLSession` は受け取り手を強く持つので、
     /// 終わったら自分で session を畳まないと残り続ける
-    private final class Sink: NSObject, URLSessionDataDelegate {
+    /// 委譲の呼び戻しは、`delegateQueue: nil` で作った session が直列の待ち行列で順に呼ぶ
+    /// （URLSession の決まり）。中の状態はその一本の流れからしか触らないので、
+    /// 施錠は持たずに Sendable を約束する
+    private final class Sink: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         private let handle: FileHandle
         private let progress: Progress
-        private let completion: (Result<Void, Error>) -> Void
+        private let completion: @Sendable (Result<Void, Error>) -> Void
         private var rejection: Error?
         private var written: Int64 = 0
         var session: URLSession?
 
         init(
             handle: FileHandle, progress: Progress,
-            completion: @escaping (Result<Void, Error>) -> Void
+            completion: @escaping @Sendable (Result<Void, Error>) -> Void
         ) {
             self.handle = handle
             self.progress = progress
@@ -199,7 +202,7 @@ struct RcClient {
     // MARK: - 書く
 
     /// フォルダを作る
-    func makeDirectory(path: String, completion: @escaping (Result<Void, Error>) -> Void) {
+    func makeDirectory(path: String, completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
         call("operations/mkdir", ["fs": connection.remote, "remote": path]) {
             completion($0.map { _ in () })
         }
@@ -214,7 +217,7 @@ struct RcClient {
     /// Drive に並ぶ（2026-08-16 実測）
     func upload(
         local: URL, named name: String, toDirectory directory: String,
-        completion: @escaping (Result<Void, Error>) -> Void
+        completion: @escaping @Sendable (Result<Void, Error>) -> Void
     ) {
         guard let contents = try? Data(contentsOf: local) else {
             return completion(.failure(Failure.noAnswer))
@@ -258,7 +261,7 @@ struct RcClient {
     /// ファイルを動かす。名前を変えるのも、これで同じこと
     func moveFile(
         from source: String, to destination: String,
-        completion: @escaping (Result<Void, Error>) -> Void
+        completion: @escaping @Sendable (Result<Void, Error>) -> Void
     ) {
         call(
             "operations/movefile",
@@ -270,32 +273,18 @@ struct RcClient {
     }
 
     /// ファイルを1つ消す
-    func deleteFile(path: String, completion: @escaping (Result<Void, Error>) -> Void) {
+    func deleteFile(path: String, completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
         call("operations/deletefile", ["fs": connection.remote, "remote": path]) {
             completion($0.map { _ in () })
         }
     }
 
     /// フォルダを中身ごと消す
-    func purge(path: String, completion: @escaping (Result<Void, Error>) -> Void) {
+    func purge(path: String, completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
         call("operations/purge", ["fs": connection.remote, "remote": path]) {
             completion($0.map { _ in () })
         }
     }
-
-    /// 小数秒つきの時刻を読む器。一覧の件数ぶん呼ばれるので使い回す
-    private static let fractionalStamp: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-
-    /// 小数秒の付かない時刻を読む器
-    private static let plainStamp: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
 
     /// rclone が返す更新時刻を読む。
     ///
@@ -303,7 +292,10 @@ struct RcClient {
     /// `.withFractionalSeconds` を付けると小数秒を必須にし、外すと今度は
     /// 小数秒つきを弾くので、両方を順に当てる。どちらでも読めなければ nil。
     static func timestamp(_ raw: String) -> Date? {
-        fractionalStamp.date(from: raw) ?? plainStamp.date(from: raw)
+        // ISO8601DateFormatter は共有できる状態を持つので静的に置けない。
+        // 読み取りの型は構造体で、作る費用は無いに等しい
+        (try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(raw))
+            ?? (try? Date.ISO8601FormatStyle().parse(raw))
     }
 
     static func entry(from raw: [String: Any]) -> Entry? {
@@ -323,7 +315,7 @@ struct RcClient {
 
     private func call(
         _ route: String, _ body: [String: Any],
-        completion: @escaping (Result<[String: Any], Error>) -> Void
+        completion: @escaping @Sendable (Result<[String: Any], Error>) -> Void
     ) {
         var request = URLRequest(url: connection.base.appendingPathComponent(route))
         request.httpMethod = "POST"

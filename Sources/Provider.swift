@@ -1,4 +1,4 @@
-import FileProvider
+@preconcurrency import FileProvider
 import Foundation
 import OSLog
 
@@ -38,14 +38,14 @@ final class Provider {
     private var rclone: Process?
 
     /// 内蔵に置くときの識別子。外付けに置くと macOS が別の識別子を振るので、決め打てない
-    private static let builtInIdentifier = NSFileProviderDomainIdentifier("gocci")
+    nonisolated private static let builtInIdentifier = NSFileProviderDomainIdentifier("gocci")
     /// こちらの持ち物だと見分けるための印。外付けの識別子は毎回変わる
     private static let mark = "io.kkweb.gocci"
     /// 選んだ場所に置く入り口の名前
     private static let entranceName = "GoogleDrive"
 
     /// 今ある繋ぎを探す
-    private func currentDomain(completion: @escaping (NSFileProviderDomain?) -> Void) {
+    private func currentDomain(completion: @escaping @MainActor @Sendable (NSFileProviderDomain?) -> Void) {
         NSFileProviderManager.getDomainsWithCompletionHandler { domains, _ in
             // 外付けに置くと macOS が `NSFPExternal-…` という識別子を振る。`userInfo` の印は
             // 読み返せなかったので、名前で見分ける。ここを取り違えると、自分が作った繋ぎを
@@ -55,13 +55,16 @@ final class Provider {
                     || (domain.identifier.rawValue.hasPrefix("NSFPExternal-")
                         && domain.displayName == "Gocci")
             }
-            completion(mine)
+            // NSFileProviderDomain は FileProvider 側が Sendable を名乗っていない。
+            // 識別子と表示名を持つだけで作った後は変わらないので、ここだけ約束して主へ渡す
+            nonisolated(unsafe) let found = mine
+            Task { @MainActor in completion(found) }
         }
     }
 
     /// 人に見せる場所。外付けに置いたときは、根に置いた入り口のほうを返す。
     /// macOS が返すのは隠しフォルダの中で、そこを開いても外付けからは辿れない
-    func entranceURL(completion: @escaping (URL?) -> Void) {
+    func entranceURL(completion: @escaping @MainActor @Sendable (URL?) -> Void) {
         let volume = Settings.volume
         if !volume.isEmpty {
             let link = URL(fileURLWithPath: volume).appendingPathComponent(Self.entranceName)
@@ -73,7 +76,7 @@ final class Provider {
     }
 
     /// 人から見える場所。macOS が決めるので、こちらでは訊くだけ
-    func visibleURL(completion: @escaping (URL?) -> Void) {
+    func visibleURL(completion: @escaping @MainActor @Sendable (URL?) -> Void) {
         currentDomain { domain in
             guard let domain, let manager = NSFileProviderManager(for: domain) else {
                 Task { @MainActor in completion(nil) }
@@ -134,7 +137,7 @@ final class Provider {
             // 中身を配る口も開ける。範囲を指定して取るために、こちらは HTTP にする。
             // 口が立つまで少し待つ。rcd が受け付けを始める前に頼むと届かない
             DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
-                self.startContentServer(endpoint: endpoint)
+                Task { @MainActor in self.startContentServer(endpoint: endpoint) }
             }
         }
     }
@@ -173,7 +176,7 @@ final class Provider {
     ///
     /// 毎回、自分の繋ぎを全部外してから作り直す。「合っているかどうか」を見て残す作りにも
     /// してみたが、内蔵と外付けの両方が残って互いの邪魔をした。判断を挟まないほうが確実
-    private func addDomain(then next: @escaping () -> Void) {
+    private func addDomain(then next: @escaping @MainActor @Sendable () -> Void) {
         NSFileProviderManager.getDomainsWithCompletionHandler { [weak self] domains, _ in
             guard let self else { return }
 
@@ -197,7 +200,8 @@ final class Provider {
                     self.visibleURL { url in
                         providerLogger.info(
                             "見える場所: \(url?.path ?? "分からない", privacy: .public)")
-                        if let url { self.placeShortcut(to: url) }
+                        // visibleURL の呼び戻しは別の待ち行列から来る。主へ移してから触る
+                        if let url { Task { @MainActor in self.placeShortcut(to: url) } }
                     }
                     next()
                 }
@@ -215,7 +219,7 @@ final class Provider {
                         providerLogger.error(
                             "外せなかった: \(error.localizedDescription, privacy: .public)")
                     }
-                    Self.clearExternalLeftovers()
+                    Task { @MainActor in Self.clearExternalLeftovers() }
                     group.leave()
                 }
             }
@@ -230,7 +234,7 @@ final class Provider {
     }
 
     /// 切り分け用。rclone も控えも介さず、ドメインだけを作る
-    func createDomainOnly(completion: @escaping () -> Void) {
+    func createDomainOnly(completion: @escaping @MainActor @Sendable () -> Void) {
         let volume = Settings.volume
         guard !volume.isEmpty, #available(macOS 15.0, *) else { return completion() }
 
@@ -315,7 +319,7 @@ final class Provider {
     }
 
     /// 調査用。macOS が覚えている繋ぎを並べる
-    func listDomains(completion: @escaping () -> Void) {
+    func listDomains(completion: @escaping @MainActor @Sendable () -> Void) {
         NSFileProviderManager.getDomainsWithCompletionHandler { domains, error in
             if let error {
                 providerLogger.error("並べられない: \(error.localizedDescription, privacy: .public)")
@@ -330,7 +334,7 @@ final class Provider {
         }
     }
 
-    private func createDomain(retriesLeft: Int = 20, then next: @escaping () -> Void) {
+    private func createDomain(retriesLeft: Int = 20, then next: @escaping @MainActor @Sendable () -> Void) {
         let volume = Settings.volume
         let domain: NSFileProviderDomain
 
@@ -372,7 +376,8 @@ final class Provider {
                     self.visibleURL { url in
                         providerLogger.info(
                             "見える場所: \(url?.path ?? "分からない", privacy: .public)")
-                        if let url { self.placeShortcut(to: url) }
+                        // visibleURL の呼び戻しは別の待ち行列から来る。主へ移してから触る
+                        if let url { Task { @MainActor in self.placeShortcut(to: url) } }
                     }
                     next()
                 }
@@ -388,7 +393,7 @@ final class Provider {
     /// 出ていない。理由は未確認。出ないままだと手元を空ける手立てが無くなるので、
     /// アプリ側にも口を残す
     /// 手元に降りている量。空にする前に、何が消えるのかを見せるために使う
-    func downloadedSize(completion: @escaping (Int64, Int) -> Void) {
+    func downloadedSize(completion: @escaping @MainActor @Sendable (Int64, Int) -> Void) {
         currentDomain { domain in
             guard let domain else {
                 Task { @MainActor in completion(0, 0) }
@@ -419,7 +424,8 @@ final class Provider {
             forName: .fileProviderMaterializedSetDidChange, object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.scheduleTrim()
+            // queue: .main を指定しているので主で呼ばれる。飛ばずに入る
+            MainActor.assumeIsolated { self?.scheduleTrim() }
         }
         scheduleTrim()
     }
@@ -447,17 +453,20 @@ final class Provider {
         }
     }
 
-    func evictDownloads(completion: @escaping (String?) -> Void) {
+    func evictDownloads(completion: @escaping @MainActor @Sendable (String?) -> Void) {
         currentDomain { domain in
             guard let domain, let manager = NSFileProviderManager(for: domain) else {
                 Task { @MainActor in completion("繋がっていません") }
                 return
             }
-            self.evict(with: manager, completion: completion)
+            // getDomains の呼び戻しは別の待ち行列から来る。主へ移してから触る
+            Task { @MainActor in self.evict(with: manager, completion: completion) }
         }
     }
 
-    private func evict(with manager: NSFileProviderManager, completion: @escaping (String?) -> Void) {
+    private func evict(
+        with manager: NSFileProviderManager, completion: @escaping @MainActor @Sendable (String?) -> Void
+    ) {
         manager.evictItem(identifier: .rootContainer) { error in
             Task { @MainActor in
                 // 消せないものが混じっていると `-2006` が返るが、消せた分は消えている。
@@ -518,7 +527,7 @@ final class Provider {
 
     // MARK: - 外す
 
-    func stop(completion: (() -> Void)? = nil) {
+    func stop(completion: (@MainActor @Sendable () -> Void)? = nil) {
         currentDomain { target in
             guard let target else {
                 Task { @MainActor in

@@ -57,7 +57,7 @@ enum RcloneConfig {
     /// そのままブラウザでの認証に入る（`rclone config create --help`）
     static func create(
         remote: String, clientID: String, clientSecret: String,
-        completion: @escaping (String?) -> Void
+        completion: @escaping @MainActor @Sendable (String?) -> Void
     ) {
         DispatchQueue.global().async {
             var arguments = ["config", "create", remote, "drive"]
@@ -66,18 +66,20 @@ enum RcloneConfig {
 
             let output = run(arguments, timeout: 300)
             DispatchQueue.main.async {
-                completion(output == nil ? "繋げませんでした" : nil)
+                MainActor.assumeIsolated { completion(output == nil ? "繋げませんでした" : nil) }
             }
         }
     }
 
     /// 認証をやり直す。ブラウザが開いて Google の同意画面が出る。
     /// client_id を変えると今の認証は無効になるので、書き込みの後は必ずこれが要る
-    static func reconnect(remote: String, completion: @escaping (String?) -> Void) {
+    static func reconnect(remote: String, completion: @escaping @MainActor @Sendable (String?) -> Void) {
         DispatchQueue.global().async {
             let output = run(["config", "reconnect", "\(remote):"], timeout: 300)
             DispatchQueue.main.async {
-                completion(output == nil ? "認証をやり直せませんでした" : nil)
+                MainActor.assumeIsolated {
+                    completion(output == nil ? "認証をやり直せませんでした" : nil)
+                }
             }
         }
     }

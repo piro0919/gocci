@@ -9,6 +9,7 @@ import AppKit
 ///
 /// メニューバーの項目は1つのまま、押したときの当たりは印に任せる。輪が当たりを取ると、
 /// 輪が出ている間だけメニューが開かない場所ができてしまう
+@MainActor
 final class SpinnerView: NSProgressIndicator {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
