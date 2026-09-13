@@ -79,9 +79,7 @@ enum Materialized {
                 "上限を超えた: \(total) / \(limit) バイト。\(chosen.count) 件を捨てる")
 
             let group = DispatchGroup()
-            let lock = NSLock()
-            var freed: Int64 = 0
-            var dropped = 0
+            let tally = Tally()
 
             for item in chosen {
                 group.enter()
@@ -92,14 +90,12 @@ enum Materialized {
                             "残した: \(item.filename, privacy: .public) \(error.localizedDescription, privacy: .public)")
                         return
                     }
-                    lock.lock()
-                    freed += item.bytes
-                    dropped += 1
-                    lock.unlock()
+                    tally.add(bytes: item.bytes)
                 }
             }
 
             group.notify(queue: .global()) {
+                let (freed, dropped) = tally.result
                 materializedLogger.info("手元から減らした: \(dropped) 件 \(freed) バイト")
                 completion(freed, dropped)
             }
@@ -136,8 +132,7 @@ enum Materialized {
         completion: @escaping ([MaterializedItem]) -> Void
     ) {
         let group = DispatchGroup()
-        let lock = NSLock()
-        var items: [MaterializedItem] = []
+        let box = ItemBox()
 
         for (identifier, filename) in found {
             group.enter()
@@ -174,16 +169,14 @@ enum Materialized {
                 let downloaded =
                     values.attributeModificationDate ?? values.contentModificationDate
                     ?? .distantPast
-                lock.lock()
-                items.append(
+                box.append(
                     MaterializedItem(
                         identifier: identifier, filename: filename, bytes: Int64(bytes),
                         downloaded: downloaded))
-                lock.unlock()
             }
         }
 
-        group.notify(queue: .global()) { completion(items) }
+        group.notify(queue: .global()) { completion(box.all) }
     }
 
     /// 受け取り係。頁が続く限り集め、終わったら一度だけ返す
@@ -219,5 +212,44 @@ enum Materialized {
         private func isFolder(_ item: NSFileProviderItemProtocol) -> Bool {
             item.contentType?.conforms(to: .folder) ?? false
         }
+    }
+}
+
+/// 閉包から数を足し込むための箱。錠を中に持たせて、足し算を一か所に集める。
+/// 捨てる呼び戻しは待ち行列が決まっていないので、素の var を掴むと競合になる
+private final class Tally: @unchecked Sendable {
+    private let lock = NSLock()
+    private var freedBytes: Int64 = 0
+    private var droppedCount = 0
+
+    func add(bytes: Int64) {
+        lock.lock()
+        freedBytes += bytes
+        droppedCount += 1
+        lock.unlock()
+    }
+
+    var result: (freed: Int64, dropped: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (freedBytes, droppedCount)
+    }
+}
+
+/// 集めた一覧を閉包から足すための箱。事情は Tally と同じ
+private final class ItemBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [MaterializedItem] = []
+
+    func append(_ item: MaterializedItem) {
+        lock.lock()
+        items.append(item)
+        lock.unlock()
+    }
+
+    var all: [MaterializedItem] {
+        lock.lock()
+        defer { lock.unlock() }
+        return items
     }
 }

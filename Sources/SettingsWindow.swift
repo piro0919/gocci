@@ -5,6 +5,7 @@ import AppKit
 // 項目が少ないので xib は使わず、素の NSView に積む。
 // 言語を変えると文字列が全部変わるので、そのときは画面ごと作り直す。
 
+@MainActor
 final class SettingsWindowController: NSWindowController {
     private let remotePopUp = NSPopUpButton()
     private let clientIDField = NSTextField(string: "")

@@ -10,6 +10,7 @@ import Foundation
 // 港（ポート）は空いているものを OS に選ばせる。決め打ちにすると、2台目や再起動の
 // 直後にぶつかる。
 
+@MainActor
 enum Rc {
     /// 今の口。マウントのたびに作り直す
     private(set) static var endpoint: (port: UInt16, user: String, password: String)?
@@ -68,7 +69,7 @@ enum Rc {
     /// 口を叩く。返事が無いのは普通のこと（起動直後・落ちた後）なので、失敗は nil で返す
     static func call(
         _ path: String, timeout: TimeInterval = 3,
-        completion: @escaping ([String: Any]?) -> Void
+        completion: @escaping @Sendable ([String: Any]?) -> Void
     ) {
         guard let endpoint else { return completion(nil) }
         guard let url = URL(string: "http://127.0.0.1:\(endpoint.port)/\(path)") else {
@@ -110,13 +111,13 @@ enum Rc {
     /// `core/stats` の `transferring` に、取りに行っている最中のファイルが並ぶ。
     /// 手元で測ったところ、読み始めてから 2 秒ほどで載り、読み終わると消える。
     /// 速さは最初の数秒 0 のままなので、速さではなく件数で見る
-    static func transferring(completion: @escaping (Int) -> Void) {
+    static func transferring(completion: @escaping @Sendable (Int) -> Void) {
         call("core/stats") { json in
             completion((json?["transferring"] as? [[String: Any]])?.count ?? 0)
         }
     }
 
-    static func diskCache(completion: @escaping (DiskCache?) -> Void) {
+    static func diskCache(completion: @escaping @Sendable (DiskCache?) -> Void) {
         call("vfs/stats") { json in
             guard let cache = json?["diskCache"] as? [String: Any] else { return completion(nil) }
             completion(

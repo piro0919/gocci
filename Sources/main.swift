@@ -56,29 +56,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NotificationCenter.default.addObserver(
             forName: .providerStateChanged, object: nil, queue: .main
         ) { [weak self] _ in
-            self?.refresh()
+            // queue: .main を指定しているので主で呼ばれる。飛ばずに入る
+            MainActor.assumeIsolated { self?.refresh() }
         }
 
         NotificationCenter.default.addObserver(
             forName: .settingsChanged, object: nil, queue: .main
         ) { [weak self] _ in
-            guard let self else { return }
+            // queue: .main を指定しているので主で呼ばれる。飛ばずに入る
+            MainActor.assumeIsolated {
+                guard let self else { return }
 
-            // 置き場所が変わった。繋ぎ直さないと前のボリュームに置かれたままになる
-            if self.lastVolume != Settings.volume {
-                self.lastVolume = Settings.volume
-                self.provider.stop { self.provider.start() }
-            }
+                // 置き場所が変わった。繋ぎ直さないと前のボリュームに置かれたままになる
+                if self.lastVolume != Settings.volume {
+                    self.lastVolume = Settings.volume
+                    self.provider.stop { self.provider.start() }
+                }
 
-            if self.builtLanguage != Language.resolved {
-                self.builtLanguage = Language.resolved
-                let wasVisible = self.settingsWindow.window?.isVisible ?? false
-                self.settingsWindow.close()
-                self.settingsWindow = SettingsWindowController()
-                if wasVisible { self.settingsWindow.show() }
+                if self.builtLanguage != Language.resolved {
+                    self.builtLanguage = Language.resolved
+                    let wasVisible = self.settingsWindow.window?.isVisible ?? false
+                    self.settingsWindow.close()
+                    self.settingsWindow = SettingsWindowController()
+                    if wasVisible { self.settingsWindow.show() }
+                }
+                self.buildMenu()
+                self.refresh()
             }
-            self.buildMenu()
-            self.refresh()
         }
 
         refresh()
@@ -216,9 +220,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard blinkTimer == nil else { return }
 
         let timer = Timer(timeInterval: 0.8, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.blinkOn.toggle()
-            self.statusItem.button?.alphaValue = self.blinkOn ? 1 : 0.35
+            // Timer は主の実行ループから呼ぶ。飛ばずに入り、違ったら落とす
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.blinkOn.toggle()
+                self.statusItem.button?.alphaValue = self.blinkOn ? 1 : 0.35
+            }
         }
         RunLoop.main.add(timer, forMode: .common)
         blinkTimer = timer

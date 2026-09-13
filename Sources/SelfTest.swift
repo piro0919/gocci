@@ -4,6 +4,7 @@ import Foundation
 /// 画面を出さずに、判断だけを確かめる。`./Gocci --selftest` で走る。
 /// rclone にも Drive にも繋がないし、手元の実体にも触らない。
 /// 組み上がったものの検査は `./test.sh` のほうにある。
+@MainActor
 enum SelfTest {
 
     private static var failures = 0
