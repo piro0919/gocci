@@ -149,10 +149,19 @@ final class Ledger: @unchecked Sendable {
         listedAt[directory] = Date()
     }
 
+    /// 覚える。書き出しは `flush()` を呼んだときにまとめて行う。
+    ///
+    /// ここで毎回書き出すと、一覧の1件ごとに台帳を丸ごと読み直して書き直すことになる。
+    /// 台帳が 17,180 件まで育った状態で 100 件のフォルダを開くと、172 万回の突き合わせと
+    /// 250MB の読み書きが走り、拡張が CPU を占め続けた（2026-09-14 実測）
     func remember(_ item: Item) {
         lock.lock()
         entries[item.itemIdentifier.rawValue] = item
         lock.unlock()
+    }
+
+    /// 覚えたぶんを控えに書き出す。覚えた回数ではなく、ひと区切りごとに呼ぶ
+    func flush() {
         save()
     }
 
@@ -220,7 +229,6 @@ final class Ledger: @unchecked Sendable {
         entries.removeValue(forKey: identifier.rawValue)
         forgotten.insert(identifier.rawValue)
         lock.unlock()
-        save()
     }
 
     // MARK: - 手元に残す
@@ -237,12 +245,7 @@ final class Ledger: @unchecked Sendable {
         guard let url else { return }
 
         lock.lock()
-        let mine = entries.mapValues { item in
-            [
-                "path": item.path, "dir": item.isDirectory, "bytes": item.bytes,
-                "modified": item.modified.timeIntervalSince1970,
-            ] as [String: Any]
-        }
+        let mine = entries.mapValues(Record.init)
         let dropped = forgotten
         lock.unlock()
 
@@ -250,24 +253,51 @@ final class Ledger: @unchecked Sendable {
         for (id, value) in mine { merged[id] = value }
         for id in dropped { merged.removeValue(forKey: id) }
 
-        guard let data = try? JSONSerialization.data(withJSONObject: merged) else { return }
+        guard let data = try? JSONEncoder().encode(merged) else { return }
         try? data.write(to: url, options: .atomic)
     }
 
-    private func diskContents() -> [String: [String: Any]] {
+    /// 控えの1件ぶん。ディスクに置く形は今までと同じ。
+    ///
+    /// `JSONSerialization` ではなく `Codable` を通すのは、前者が返す辞書の鍵が `NSString` の
+    /// ままで、辞書を引くたびに1文字ずつ Unicode 正規化する最遅経路に落ちるため。
+    /// 鍵は Drive の識別子で ASCII しか来ないので、正規化はまるごと無駄な仕事になる
+    /// （2026-09-14 実測）
+    private struct Record: Codable {
+        let path: String
+        let dir: Bool
+        let bytes: Int64
+        let modified: Double
+
+        init(_ item: Item) {
+            self.path = item.path
+            self.dir = item.isDirectory
+            self.bytes = item.bytes
+            self.modified = item.modified.timeIntervalSince1970
+        }
+
+        /// 欠けた欄は既定で埋める。1件の綴りが古くても、控え全体を捨てずに済ませる
+        init(from decoder: Decoder) throws {
+            let box = try decoder.container(keyedBy: CodingKeys.self)
+            self.path = try box.decodeIfPresent(String.self, forKey: .path) ?? ""
+            self.dir = try box.decodeIfPresent(Bool.self, forKey: .dir) ?? false
+            self.bytes = try box.decodeIfPresent(Int64.self, forKey: .bytes) ?? 0
+            self.modified = try box.decodeIfPresent(Double.self, forKey: .modified) ?? 0
+        }
+    }
+
+    private func diskContents() -> [String: Record] {
         guard let url, let data = try? Data(contentsOf: url),
-            let payload = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]]
+            let payload = try? JSONDecoder().decode([String: Record].self, from: data)
         else { return [:] }
         return payload
     }
 
     private func load() {
-        for (id, raw) in diskContents() {
-            guard let path = raw["path"] as? String else { continue }
+        for (id, raw) in diskContents() where !raw.path.isEmpty {
             entries[id] = Item(
-                id: id, path: path, isDirectory: (raw["dir"] as? Bool) ?? false,
-                bytes: (raw["bytes"] as? NSNumber)?.int64Value ?? 0,
-                modified: Date(timeIntervalSince1970: (raw["modified"] as? Double) ?? 0))
+                id: id, path: raw.path, isDirectory: raw.dir, bytes: raw.bytes,
+                modified: Date(timeIntervalSince1970: raw.modified))
         }
     }
 }
@@ -329,6 +359,7 @@ final class Enumerator: NSObject, NSFileProviderEnumerator {
                     return item
                 }
                 Ledger.shared.noteListed(base)
+                Ledger.shared.flush()
                 logger.info("並べた: \(base, privacy: .public) の \(items.count) 件")
                 observer.didEnumerate(items)
                 observer.finishEnumerating(upTo: nil)
@@ -384,6 +415,7 @@ final class Enumerator: NSObject, NSFileProviderEnumerator {
 
                 let missing = remembered.filter { !seen.contains($0.itemIdentifier.rawValue) }
                 for item in missing { Ledger.shared.forget(item.itemIdentifier) }
+                Ledger.shared.flush()
 
                 harvest.add(changed: mine, gone: missing.map(\.itemIdentifier))
             }
@@ -454,6 +486,7 @@ final class Enumerator: NSObject, NSFileProviderEnumerator {
 
             let gone = remembered.filter { !seen.contains($0.itemIdentifier.rawValue) }
             for item in gone { Ledger.shared.forget(item.itemIdentifier) }
+            Ledger.shared.flush()
 
             if !changed.isEmpty { observer.didUpdate(changed) }
             if !gone.isEmpty { observer.didDeleteItems(withIdentifiers: gone.map(\.itemIdentifier)) }
@@ -559,6 +592,7 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
                 id: found.id, path: path, isDirectory: found.isDirectory, bytes: found.size,
                 modified: found.modified)
             Ledger.shared.remember(item)
+            Ledger.shared.flush()
             completion(item, nil)
         }
     }
@@ -664,6 +698,7 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
                 id: path, path: path, isDirectory: isDirectory, bytes: bytes,
                 modified: itemTemplate.contentModificationDate.flatMap { $0 } ?? Date())
             Ledger.shared.remember(item)
+            Ledger.shared.flush()
             logger.info("作った: \(path, privacy: .public)")
             progress.completedUnitCount = 1
             completionHandler(item, [], false, nil)
@@ -739,6 +774,7 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
                         bytes: item.documentSize.flatMap { $0 }?.int64Value ?? 0,
                         modified: item.contentModificationDate.flatMap { $0 } ?? Date())
                     Ledger.shared.remember(moved)
+                    Ledger.shared.flush()
                     logger.info("動かした: \(path, privacy: .public) → \(destination, privacy: .public)")
                     completionHandler(moved, [], false, nil)
                 }
@@ -770,6 +806,7 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
                     id: item.itemIdentifier.rawValue, path: path, isDirectory: false,
                     bytes: bytes, modified: Date())
                 Ledger.shared.remember(updated)
+                Ledger.shared.flush()
                 logger.info("書いた: \(path, privacy: .public)")
                 completionHandler(updated, [], false, nil)
             }
@@ -805,6 +842,7 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
                 completionHandler(NSFileProviderError(.serverUnreachable))
             case .success:
                 Ledger.shared.forget(identifier)
+                Ledger.shared.flush()
                 logger.info("消した: \(path, privacy: .public)")
                 completionHandler(nil)
             }
