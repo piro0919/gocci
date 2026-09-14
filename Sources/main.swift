@@ -136,6 +136,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var signalSources: [DispatchSourceSignal] = []
 
+    /// 降りるときに rclone を落とす。
+    ///
+    /// 子は親が落ちても道連れにならないので、放っておくと起動のたびに1本ずつ残る。
+    /// 実際に12日で5本溜まり、どれも同じ Drive を見ていた（2026-09-14 実測）
+    func applicationWillTerminate(_ notification: Notification) {
+        provider.shutdown()
+    }
+
     /// 降りるときに外す必要はない。繋ぎは macOS が覚えていて、次に起きたら続きから使える
 
     // MARK: - メニュー
