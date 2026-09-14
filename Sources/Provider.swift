@@ -562,6 +562,32 @@ final class Provider {
         state = .off
     }
 
+    /// 降りるときの片付け。繋ぎは外さない。
+    ///
+    /// `stop` との違いはそこで、外すと次に起きたときに作り直しになる。macOS が覚えていて
+    /// くれるので、置いたまま降りる。
+    ///
+    /// rclone は親が落ちても道連れにならない。ここで落とさないと、起動のたびに1本ずつ
+    /// 残り続ける（2026-09-14 実測。12日で5本、うち1本は開発用の組み上がりから）
+    func shutdown() {
+        watchTimer?.invalidate()
+        watchTimer = nil
+
+        if let task = rclone, task.isRunning {
+            task.terminate()
+            // 降りるまでに使える時間は短い。素直に落ちなければ力ずくで止める。
+            // 残すと次の起動でもう1本増えるので、ここで終わらせきる
+            let deadline = Date().addingTimeInterval(2)
+            while task.isRunning && Date() < deadline { usleep(50_000) }
+            if task.isRunning { kill(task.processIdentifier, SIGKILL) }
+        }
+        rclone = nil
+
+        // 古い口を叩き続けないように、控えも消す
+        RcEndpoint.clear()
+        Rc.close()
+    }
+
     private func isFailed(_ state: State) -> Bool {
         if case .failed = state { return true }
         return false
