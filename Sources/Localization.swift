@@ -98,6 +98,11 @@ enum L {
     }
     static var language: String { t("言語", "Language") }
     static var checkForUpdates: String { t("更新を確認", "Check for Updates") }
+    static func rcloneStopped(status: Int32, signaled: Bool) -> String {
+        signaled
+            ? t("rclone が止まりました（シグナル \(status)）", "rclone stopped (signal \(status))")
+            : t("rclone が止まりました（終了コード \(status)）", "rclone stopped (exit code \(status))")
+    }
     static func launchToggleFailed(_ reason: String) -> String {
         t("切り替えられませんでした: \(reason)", "Could not change it: \(reason)")
     }

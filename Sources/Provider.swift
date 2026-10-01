@@ -36,6 +36,11 @@ final class Provider {
 
     /// 口だけ開けた rclone。マウントは張らない
     private var rclone: Process?
+    /// rclone を立てた時刻。落ちたときに、立て直すか諦めるかを決めるのに使う
+    private var rcloneStartedAt: Date?
+    /// これだけ動いてから落ちたなら、一度は立て直す。立ててすぐ落ちるものは、
+    /// 何度立てても落ちるので、立て直さずに失敗として見せる
+    private static let restartAfter: TimeInterval = 60
 
     /// 内蔵に置くときの識別子。外付けに置くと macOS が別の識別子を振るので、決め打てない
     nonisolated private static let builtInIdentifier = NSFileProviderDomainIdentifier("gocci")
@@ -126,6 +131,15 @@ final class Provider {
         addDomain { [weak self] in
             guard let self else { return }
 
+            // 自分で止めたとき（`finishStopping`・`shutdown`）は、先に `rclone` を外してから
+            // 落とすので、ここへ戻ってきても今の rclone とは食い違って何もしない
+            let token = ObjectIdentifier(task)
+            task.terminationHandler = { [weak self] process in
+                let status = process.terminationStatus
+                let signaled = process.terminationReason == .uncaughtSignal
+                Task { @MainActor in self?.rcloneExited(token, status: status, signaled: signaled) }
+            }
+
             do {
                 try task.run()
             } catch {
@@ -133,6 +147,7 @@ final class Provider {
                 return
             }
             self.rclone = task
+            self.rcloneStartedAt = Date()
 
             // 中身を配る口も開ける。範囲を指定して取るために、こちらは HTTP にする。
             // 口が立つまで少し待つ。rcd が受け付けを始める前に頼むと届かない
@@ -525,6 +540,38 @@ final class Provider {
         }
     }
 
+    // MARK: - 落ちたとき
+
+    /// rclone が頼んでもいないのに止まった。
+    ///
+    /// 放っておくと、印は「接続済み」のまま、拡張は誰もいない口を叩き続ける。Finder には
+    /// 中身が出ず、何が起きたのかはどこにも出ない。控えを消して拡張には「繋がらない」と
+    /// 答えさせ、しばらく動いていたものなら一度立て直す。立ててすぐ落ちたなら失敗として
+    /// 見せる。印が点滅し、メニューの「接続する」から立て直せる
+    private func rcloneExited(_ token: ObjectIdentifier, status: Int32, signaled: Bool) {
+        guard let current = rclone, ObjectIdentifier(current) == token else { return }
+
+        let uptime = rcloneStartedAt.map { Date().timeIntervalSince($0) } ?? 0
+        providerLogger.error(
+            "rclone が止まった: \(signaled ? "シグナル" : "終了コード", privacy: .public) \(status) / \(Int(uptime)) 秒動いていた"
+        )
+
+        rclone = nil
+        rcloneStartedAt = nil
+        watchTimer?.invalidate()
+        watchTimer = nil
+        RcEndpoint.clear()
+        Rc.close()
+
+        if uptime >= Self.restartAfter {
+            providerLogger.info("rclone を立て直す")
+            state = .off
+            start()
+        } else {
+            state = .failed(L.rcloneStopped(status: status, signaled: signaled))
+        }
+    }
+
     // MARK: - 外す
 
     func stop(completion: (@MainActor @Sendable () -> Void)? = nil) {
@@ -554,8 +601,10 @@ final class Provider {
     private func finishStopping() {
         watchTimer?.invalidate()
         watchTimer = nil
-        rclone?.terminate()
+        let task = rclone
         rclone = nil
+        rcloneStartedAt = nil
+        task?.terminate()
         // 古い口を叩き続けないように、控えも消す
         RcEndpoint.clear()
         Rc.close()
@@ -573,7 +622,10 @@ final class Provider {
         watchTimer?.invalidate()
         watchTimer = nil
 
-        if let task = rclone, task.isRunning {
+        let running = rclone
+        rclone = nil
+        rcloneStartedAt = nil
+        if let task = running, task.isRunning {
             task.terminate()
             // 降りるまでに使える時間は短い。素直に落ちなければ力ずくで止める。
             // 残すと次の起動でもう1本増えるので、ここで終わらせきる
@@ -581,7 +633,6 @@ final class Provider {
             while task.isRunning && Date() < deadline { usleep(50_000) }
             if task.isRunning { kill(task.processIdentifier, SIGKILL) }
         }
-        rclone = nil
 
         // 古い口を叩き続けないように、控えも消す
         RcEndpoint.clear()
