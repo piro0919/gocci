@@ -104,6 +104,102 @@ enum SelfTest {
                 "手元に何も無ければ何もしない")
         }
 
+        // 動かすときの頼み方。フォルダを operations/movefile に渡すと断られる
+        do {
+            let folder = RcClient.moveRequest(
+                remote: "gdrive:", from: "書類/旧", to: "書類/新", isDirectory: true)
+            check(folder.route == "sync/move", "フォルダは sync/move で動かす")
+            check(folder.body["srcFs"] as? String == "gdrive:書類/旧", "フォルダの元は置き場ごと渡す")
+            check(folder.body["dstFs"] as? String == "gdrive:書類/新", "フォルダの先も置き場ごと渡す")
+            check(folder.body["srcRemote"] == nil, "フォルダにはファイル用の引数を付けない")
+            check(folder.body["deleteEmptySrcDirs"] as? Bool == true, "空になった元フォルダを残さない")
+
+            let file = RcClient.moveRequest(
+                remote: "gdrive:", from: "a/b.txt", to: "c/b.txt", isDirectory: false)
+            check(file.route == "operations/movefile", "ファイルは operations/movefile で動かす")
+            check(file.body["srcFs"] as? String == "gdrive:", "ファイルの元は根を渡す")
+            check(file.body["srcRemote"] as? String == "a/b.txt", "ファイルの元は道で渡す")
+            check(file.body["dstRemote"] as? String == "c/b.txt", "ファイルの先は道で渡す")
+        }
+
+        // 失敗の見分け。File Provider へ返す誤りがここで決まる
+        do {
+            typealias F = RcClient.Failure
+            check(RcClient.classify(URLError(.cannotConnectToHost)) == .network, "rcd に届かなければ繋がらない扱い")
+            check(RcClient.classify(F.noAnswer) == .network, "返事が無ければ繋がらない扱い")
+            check(
+                RcClient.classify(F.rejected("unauthorized", status: 401)) == .network,
+                "rcd の合言葉違いは控えが古いだけ")
+            check(
+                RcClient.classify(F.rejected("object not found", status: 404)) == .notFound,
+                "404 は無い")
+            check(
+                RcClient.classify(F.rejected("error in ListJSON: directory not found", status: 500))
+                    == .notFound,
+                "文で not found と言えば無い")
+            check(
+                RcClient.classify(
+                    F.rejected(
+                        "couldn't fetch token: invalid_grant: maybe token expired? - try refreshing",
+                        status: 500)) == .notAuthenticated,
+                "合鍵切れは認証の誤り")
+            check(
+                RcClient.classify(
+                    F.rejected(
+                        "googleapi: Error 403: The user's Drive storage quota has been exceeded., storageQuotaExceeded",
+                        status: 500)) == .quota,
+                "容量切れは容量の誤り")
+            check(
+                RcClient.classify(
+                    F.rejected(
+                        "googleapi: Error 403: User Rate Limit Exceeded, userRateLimitExceeded", status: 500))
+                    == .other,
+                "回数の上限は容量の誤りにしない")
+            check(
+                RcClient.classify(F.rejected("directory already exists", status: 500)) == .collision,
+                "既にあれば名前の衝突")
+            check(
+                RcClient.classify(F.rejected("is a directory not a file", status: 500)) == .other,
+                "見分けのつかないものはその他")
+        }
+
+        // 別の端末での書き換えを見分ける
+        do {
+            let stamp = Date(timeIntervalSince1970: 1_800_000_000.4)
+            let entry = RcClient.Entry(name: "a.txt", size: 10, isDirectory: false, modified: stamp, id: "x")
+            let same = Data(RcClient.signature(bytes: 10, modified: stamp).utf8)
+            check(RcClient.signature(bytes: 10, modified: stamp) == "10-1800000000", "版は大きさと秒")
+            check(!RcClient.hasConflict(base: same, current: entry), "同じ版なら衝突しない")
+            check(
+                RcClient.hasConflict(base: Data("10-1799999000".utf8), current: entry),
+                "時刻が違えば衝突")
+            check(RcClient.hasConflict(base: Data("9-1800000000".utf8), current: entry), "大きさが違えば衝突")
+            check(!RcClient.hasConflict(base: Data("9-1".utf8), current: nil), "Drive に無ければ衝突にしない")
+            check(!RcClient.hasConflict(base: Data(), current: entry), "元の版が空なら比べない")
+            check(
+                !RcClient.hasConflict(base: Data([0xff, 0x00]), current: entry),
+                "こちらの形でない版は比べない")
+            let folder = RcClient.Entry(name: "d", size: -1, isDirectory: true, modified: stamp, id: "d")
+            check(!RcClient.hasConflict(base: Data("0-1".utf8), current: folder), "フォルダは比べない")
+
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = .current
+            let when = calendar.date(
+                from: DateComponents(year: 2026, month: 10, day: 1, hour: 14, minute: 0, second: 58))!
+            check(
+                RcClient.conflictName(for: "報告書.pdf", at: when) == "報告書 (conflict 2026-10-01 140058).pdf",
+                "衝突の写しは拡張子の前に印を付ける")
+            check(
+                RcClient.conflictName(for: "README", at: when) == "README (conflict 2026-10-01 140058)",
+                "拡張子が無ければ後ろに付ける")
+            check(
+                RcClient.conflictName(for: ".zshrc", at: when) == ".zshrc (conflict 2026-10-01 140058)",
+                "隠しファイルの名前を拡張子と取り違えない")
+            check(
+                RcClient.conflictName(for: "a.tar.gz", at: when) == "a.tar (conflict 2026-10-01 140058).gz",
+                "拡張子は最後の一つだけ")
+        }
+
         print(failures == 0 ? "全部通りました" : "\(failures) 件こけました")
         return failures == 0 ? 0 : 1
     }

@@ -40,10 +40,16 @@ final class Item: NSObject, NSFileProviderItem {
         self.bytes = bytes
         self.modified = modified
         self.path = path
-        // 秒で丸める。小数のまま文字にすると、控えに書いて読み直すたびに揺れて、
-        // 変わっていないものまで「変わった」と伝えることになる
-        // （2026-08-16 実測。1件しか変えていないのに 1159 件を更新と数えた）
-        self.signature = "\(bytes)-\(Int(modified.timeIntervalSince1970))"
+        // 秒で丸める。理由は `RcClient.signature` に。衝突の見分けも同じ形で比べる
+        self.signature = RcClient.signature(bytes: bytes, modified: modified)
+    }
+
+    /// rclone の一件から作る。識別子は呼ぶ側が決める——上げた直後は Drive の ID が
+    /// 分からず、道を借りているものがある
+    convenience init(id: String, path: String, entry: RcClient.Entry) {
+        self.init(
+            id: id, path: path, isDirectory: entry.isDirectory, bytes: entry.size,
+            modified: entry.modified)
     }
 
     /// 親は台帳から引く。作るときに求めると、台帳を読み込んでいる最中に
@@ -223,6 +229,21 @@ final class Ledger: @unchecked Sendable {
         return recall(identifier)?.path
     }
 
+    /// フォルダを動かしたら、中にあるものの道も付け替える。
+    ///
+    /// Drive はフォルダごと動かしても中身の ID を変えない。道だけが古いまま残ると、
+    /// 次に中のファイルを開いたときに、もう無い場所を rclone に頼むことになる
+    func rebase(from old: String, to new: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        let prefix = old + "/"
+        for (id, item) in entries where item.path.hasPrefix(prefix) {
+            entries[id] = Item(
+                id: id, path: new + "/" + item.path.dropFirst(prefix.count),
+                isDirectory: item.isDirectory, bytes: item.bytes, modified: item.modified)
+        }
+    }
+
     /// 消えたものを忘れる。残しておくと、次に同じ ID を訊かれたときに嘘を返す
     func forget(_ identifier: NSFileProviderItemIdentifier) {
         lock.lock()
@@ -348,7 +369,7 @@ final class Enumerator: NSObject, NSFileProviderEnumerator {
             switch result {
             case .failure(let error):
                 logger.error("一覧を取れなかった: \(error.localizedDescription, privacy: .public)")
-                observer.finishEnumeratingWithError(NSFileProviderError(.serverUnreachable))
+                observer.finishEnumeratingWithError(providerError(for: error))
             case .success(let entries):
                 let items = entries.map { entry -> Item in
                     let path = base.isEmpty ? entry.name : "\(base)/\(entry.name)"
@@ -637,7 +658,7 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
             case .failure(let error):
                 logger.error("取れなかった: \(error.localizedDescription, privacy: .public)")
                 try? FileManager.default.removeItem(at: handoff)
-                completionHandler(nil, nil, NSFileProviderError(.serverUnreachable))
+                completionHandler(nil, nil, providerError(for: error))
             case .success:
                 logger.info("渡した: \(item.filename, privacy: .public)")
                 completionHandler(destination, item, nil)
@@ -690,44 +711,80 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
         let path = parent.isEmpty ? name : "\(parent)/\(name)"
         let isDirectory = itemTemplate.contentType == .folder
 
-        /// 上げ終えたら、こちらの覚えも新しくして返す
-        let settle: (Int64) -> Void = { bytes in
-            // 上げた直後は Drive の ID が分からない。道を借りておき、
-            // 次に並べ直したときに本物の ID へ入れ替わる
-            let item = Item(
-                id: path, path: path, isDirectory: isDirectory, bytes: bytes,
-                modified: itemTemplate.contentModificationDate.flatMap { $0 } ?? Date())
-            Ledger.shared.remember(item)
-            Ledger.shared.flush()
-            logger.info("作った: \(path, privacy: .public)")
-            progress.completedUnitCount = 1
-            completionHandler(item, [], false, nil)
+        /// 上げ終えたら、こちらの覚えも新しくして返す。
+        ///
+        /// 大きさと時刻は Drive に訊き直す。手元の時刻のままだと、Drive が付けた時刻と
+        /// 秒がずれて、次に書き換えたときに別の端末で変えられたと見誤る
+        let settle: @Sendable (Int64) -> Void = { bytes in
+            client.stat(path) { result in
+                // 上げた直後は Drive の ID が分からない。道を借りておき、
+                // 次に並べ直したときに本物の ID へ入れ替わる
+                let item: Item
+                if case .success(let entry?) = result {
+                    item = Item(id: path, path: path, entry: entry)
+                } else {
+                    item = Item(
+                        id: path, path: path, isDirectory: isDirectory, bytes: bytes,
+                        modified: itemTemplate.contentModificationDate.flatMap { $0 } ?? Date())
+                }
+                Ledger.shared.remember(item)
+                Ledger.shared.flush()
+                logger.info("作った: \(path, privacy: .public)")
+                progress.completedUnitCount = 1
+                completionHandler(item, [], false, nil)
+            }
         }
 
-        let refuse: (Error) -> Void = { error in
+        let refuse: @Sendable (Error) -> Void = { error in
             logger.error("作れなかった: \(path, privacy: .public) \(error.localizedDescription, privacy: .public)")
             progress.completedUnitCount = 1
-            completionHandler(nil, [], false, NSFileProviderError(.serverUnreachable))
+            completionHandler(nil, [], false, providerError(for: error))
         }
 
-        if isDirectory {
-            client.makeDirectory(path: path) { result in
-                switch result {
-                case .success: settle(0)
-                case .failure(let error): refuse(error)
+        let create: @Sendable () -> Void = {
+            if isDirectory {
+                client.makeDirectory(path: path) { result in
+                    switch result {
+                    case .success: settle(0)
+                    case .failure(let error): refuse(error)
+                    }
+                }
+            } else {
+                guard let url else {
+                    completionHandler(nil, [], false, NSFileProviderError(.noSuchItem))
+                    return
+                }
+                let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+                client.upload(local: url, named: name, toDirectory: parent) { result in
+                    switch result {
+                    case .success: settle(bytes)
+                    case .failure(let error): refuse(error)
+                    }
                 }
             }
-        } else {
-            guard let url else {
-                completionHandler(nil, [], false, NSFileProviderError(.noSuchItem))
-                return progress
-            }
-            let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
-            client.upload(local: url, named: name, toDirectory: parent) { result in
-                switch result {
-                case .success: settle(bytes)
-                case .failure(let error): refuse(error)
-                }
+        }
+
+        // 同じ名前が Drive に既にあるなら作らない。rclone は黙って上書きし（ファイル）、
+        // 黙って相乗りする（フォルダ）。どちらも、まだ手元に降りてきていない誰かの
+        // ファイルを潰す。断れば macOS が手元の名前を変えて頼み直してくる。
+        // `mayAlreadyExist` は macOS が「前に作ったはず」と言って頼み直すときで、確かめない
+        if options.contains(.mayAlreadyExist) {
+            create()
+            return progress
+        }
+        client.stat(path) { result in
+            switch result {
+            case .failure(let error):
+                refuse(error)
+            case .success(let existing?):
+                logger.info("同じ名前が既にある: \(path, privacy: .public)")
+                progress.completedUnitCount = 1
+                let id = Ledger.shared.identifier(forPath: path)?.rawValue ?? existing.id
+                completionHandler(
+                    nil, [], false,
+                    NSError.fileProviderErrorForCollision(with: Item(id: id, path: path, entry: existing)))
+            case .success(nil):
+                create()
             }
         }
         return progress
@@ -761,22 +818,75 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
                 return progress
             }
 
-            client.moveFile(from: path, to: destination) { result in
+            // 種別は控えを信じる。macOS が渡してくる `item` の contentType は
+            // 当てにならないことがあるので、控えに無いときだけ使う
+            let isDirectory =
+                Ledger.shared.recall(item.itemIdentifier)?.isDirectory ?? (item.contentType == .folder)
+            let identifier = item.itemIdentifier.rawValue
+            let fallbackBytes = item.documentSize.flatMap { $0 }?.int64Value ?? 0
+            let fallbackModified = item.contentModificationDate.flatMap { $0 } ?? Date()
+
+            let fail: @Sendable (Error) -> Void = { error in
                 progress.completedUnitCount = 1
-                switch result {
-                case .failure(let error):
-                    logger.error(
-                        "動かせなかった: \(path, privacy: .public) \(error.localizedDescription, privacy: .public)")
-                    completionHandler(nil, [], false, NSFileProviderError(.serverUnreachable))
-                case .success:
-                    let moved = Item(
-                        id: item.itemIdentifier.rawValue, path: destination, isDirectory: false,
-                        bytes: item.documentSize.flatMap { $0 }?.int64Value ?? 0,
-                        modified: item.contentModificationDate.flatMap { $0 } ?? Date())
+                logger.error(
+                    "動かせなかった: \(path, privacy: .public) \(error.localizedDescription, privacy: .public)")
+                completionHandler(nil, [], false, providerError(for: error))
+            }
+
+            let settle: @Sendable () -> Void = {
+                client.stat(destination) { result in
+                    progress.completedUnitCount = 1
+                    let moved: Item
+                    if case .success(let entry?) = result {
+                        moved = Item(id: identifier, path: destination, entry: entry)
+                    } else {
+                        moved = Item(
+                            id: identifier, path: destination, isDirectory: isDirectory,
+                            bytes: fallbackBytes, modified: fallbackModified)
+                    }
                     Ledger.shared.remember(moved)
+                    if isDirectory { Ledger.shared.rebase(from: path, to: destination) }
                     Ledger.shared.flush()
                     logger.info("動かした: \(path, privacy: .public) → \(destination, privacy: .public)")
                     completionHandler(moved, [], false, nil)
+                }
+            }
+
+            let move: @Sendable () -> Void = {
+                client.move(from: path, to: destination, isDirectory: isDirectory) { result in
+                    switch result {
+                    case .failure(let error):
+                        fail(error)
+                    case .success:
+                        // フォルダごと動かせない相手だと、中身を運んだあとに空の
+                        // 元フォルダが残る。消せなければそれまで（中身が残っているなど）
+                        guard isDirectory else { return settle() }
+                        client.removeDirectory(path: path) { _ in settle() }
+                    }
+                }
+            }
+
+            // 行き先に同じ名前があれば断る。rclone はファイルなら黙って上書きし、
+            // フォルダなら黙って中身を混ぜる。断れば macOS が名前を変えて頼み直してくる。
+            // 大文字と小文字だけの改名は、同じものを見つけてしまうので確かめない
+            if destination.lowercased() == path.lowercased() {
+                move()
+                return progress
+            }
+            client.stat(destination) { result in
+                switch result {
+                case .failure(let error):
+                    fail(error)
+                case .success(let existing?):
+                    progress.completedUnitCount = 1
+                    logger.info("行き先に同じ名前がある: \(destination, privacy: .public)")
+                    let id = Ledger.shared.identifier(forPath: destination)?.rawValue ?? existing.id
+                    completionHandler(
+                        nil, [], false,
+                        NSError.fileProviderErrorForCollision(
+                            with: Item(id: id, path: destination, entry: existing)))
+                case .success(nil):
+                    move()
                 }
             }
             return progress
@@ -789,26 +899,67 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
         }
 
         let parent = (path as NSString).deletingLastPathComponent
+        let name = (path as NSString).lastPathComponent
+        let identifier = item.itemIdentifier.rawValue
+        let base = version.contentVersion
         let bytes =
             (try? newContents.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
 
-        client.upload(
-            local: newContents, named: (path as NSString).lastPathComponent,
-            toDirectory: parent
-        ) { result in
+        let fail: @Sendable (String, Error) -> Void = { what, error in
             progress.completedUnitCount = 1
+            logger.error(
+                "\(what, privacy: .public): \(path, privacy: .public) \(error.localizedDescription, privacy: .public)")
+            completionHandler(nil, [], false, providerError(for: error))
+        }
+
+        // 上げる前に Drive の今を見る。手元が元にした版と違えば、別の端末で書き換えられている。
+        //
+        // そのときは上書きしない。手元の中身は `名前 (conflict 日時).拡張子` として隣に上げ、
+        // 元の名前には Drive の版を返して、macOS に取り直させる。どちらの書き換えも消えない。
+        // 新しいファイルは、次に見て回ったときに Finder に現れる
+        client.stat(path) { result in
+            let current: RcClient.Entry?
             switch result {
-            case .failure(let error):
-                logger.error("書けなかった: \(path, privacy: .public) \(error.localizedDescription, privacy: .public)")
-                completionHandler(nil, [], false, NSFileProviderError(.serverUnreachable))
-            case .success:
-                let updated = Item(
-                    id: item.itemIdentifier.rawValue, path: path, isDirectory: false,
-                    bytes: bytes, modified: Date())
-                Ledger.shared.remember(updated)
-                Ledger.shared.flush()
-                logger.info("書いた: \(path, privacy: .public)")
-                completionHandler(updated, [], false, nil)
+            case .failure(let error): return fail("今の版を確かめられなかった", error)
+            case .success(let entry): current = entry
+            }
+
+            if let current, RcClient.hasConflict(base: base, current: current) {
+                let copy = RcClient.conflictName(for: name, at: Date())
+                client.upload(local: newContents, named: copy, toDirectory: parent) { result in
+                    if case .failure(let error) = result {
+                        return fail("衝突した中身を逃がせなかった", error)
+                    }
+                    progress.completedUnitCount = 1
+                    let remote = Item(id: identifier, path: path, entry: current)
+                    Ledger.shared.remember(remote)
+                    Ledger.shared.flush()
+                    logger.info(
+                        "別の端末で変わっていた: \(path, privacy: .public) の手元の中身を \(copy, privacy: .public) に上げた")
+                    Self.askForSweep()
+                    completionHandler(remote, [], true, nil)
+                }
+                return
+            }
+
+            client.upload(local: newContents, named: name, toDirectory: parent) { result in
+                if case .failure(let error) = result { return fail("書けなかった", error) }
+
+                // 版は Drive に訊き直す。手元の時刻で作ると、次の書き換えで食い違いと見誤る
+                client.stat(path) { result in
+                    progress.completedUnitCount = 1
+                    let updated: Item
+                    if case .success(let entry?) = result {
+                        updated = Item(id: identifier, path: path, entry: entry)
+                    } else {
+                        updated = Item(
+                            id: identifier, path: path, isDirectory: false, bytes: bytes, modified: Date())
+                    }
+                    Ledger.shared.remember(updated)
+                    Ledger.shared.flush()
+                    logger.info("書いた: \(path, privacy: .public)")
+                    completionHandler(updated, [], false, nil)
+                }
             }
         }
         return progress
@@ -833,13 +984,20 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
         }
         let path = known.path
         let isDirectory = known.isDirectory
+        let base = version.contentVersion
 
         let finish: @Sendable (Result<Void, Error>) -> Void = { result in
             progress.completedUnitCount = 1
             switch result {
+            case .failure(let error) where RcClient.classify(error) == .notFound:
+                // 向こうで先に消えていた。消したかったものが無いのだから、それで済んでいる
+                Ledger.shared.forget(identifier)
+                Ledger.shared.flush()
+                logger.info("既に無かった: \(path, privacy: .public)")
+                completionHandler(nil)
             case .failure(let error):
                 logger.error("消せなかった: \(path, privacy: .public) \(error.localizedDescription, privacy: .public)")
-                completionHandler(NSFileProviderError(.serverUnreachable))
+                completionHandler(providerError(for: error))
             case .success:
                 Ledger.shared.forget(identifier)
                 Ledger.shared.flush()
@@ -848,13 +1006,46 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
             }
         }
 
-        // フォルダは中身ごと。macOS はゴミ箱へ入れる前にここを通る
+        // フォルダは中身ごと。macOS はゴミ箱へ入れる前にここを通る。
+        // フォルダの版は比べない。Drive のフォルダの時刻は中身の出入りでも動くので、
+        // 比べると消せないフォルダばかりになる
         if isDirectory {
             client.purge(path: path, completion: finish)
-        } else {
-            client.deleteFile(path: path, completion: finish)
+            return progress
+        }
+
+        // 別の端末で書き換えられていたら消さない。断れば macOS は Drive の版で
+        // 手元に戻す。消すのは、それを見た人がもう一度消したとき
+        client.stat(path) { result in
+            switch result {
+            case .failure(let error):
+                finish(.failure(error))
+            case .success(nil):
+                finish(.success(()))
+            case .success(let current?):
+                guard RcClient.hasConflict(base: base, current: current) else {
+                    return client.deleteFile(path: path, completion: finish)
+                }
+                progress.completedUnitCount = 1
+                let remote = Item(id: identifier.rawValue, path: path, entry: current)
+                Ledger.shared.remember(remote)
+                Ledger.shared.flush()
+                logger.info("別の端末で変わっていたので消さない: \(path, privacy: .public)")
+                completionHandler(NSError.fileProviderErrorForRejectedDeletion(of: remote))
+            }
         }
         return progress
+    }
+
+    /// 作業組を見直すよう頼む。衝突で逃がした新しいファイルを、次の定期の見回りを
+    /// 待たずに Finder へ出すため
+    private static func askForSweep() {
+        guard let domain = myDomain, let manager = NSFileProviderManager(for: domain) else { return }
+        manager.signalEnumerator(for: .workingSet) { error in
+            if let error {
+                logger.error("見直しを頼めなかった: \(error.localizedDescription, privacy: .public)")
+            }
+        }
     }
 
     func enumerator(
@@ -978,7 +1169,7 @@ extension GocciFileProvider: NSFileProviderPartialContentFetching {
                 case .failure(let error):
                     logger.error(
                         "途中を取れなかった: \(error.localizedDescription, privacy: .public)")
-                    completionHandler(nil, nil, NSRange(), [], NSFileProviderError(.serverUnreachable))
+                    completionHandler(nil, nil, NSRange(), [], providerError(for: error))
 
                 case .success(let data):
                     guard
@@ -1140,5 +1331,27 @@ private final class Harvest: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return (changed, gone)
+    }
+}
+
+/// rclone の失敗を、File Provider が分かる誤りに直す。
+///
+/// 何でも `.serverUnreachable` で返すと、macOS は「繋がらない」と思って待ち続ける。
+/// 合鍵切れも容量不足も直らないまま、利用者には何も伝わらない。
+///
+/// 見分けのつかない失敗は、決まり通り `NSCocoaErrorDomain` の
+/// `NSXPCConnectionReplyInvalid` に元の誤りを添えて返す。macOS はこれを一時的な失敗として
+/// 扱い、やり直す（`NSFileProviderReplicatedExtension.h` の modifyItem の項）
+func providerError(for error: Error) -> Error {
+    switch RcClient.classify(error) {
+    case .network: return NSFileProviderError(.serverUnreachable)
+    case .notFound: return NSFileProviderError(.noSuchItem)
+    case .notAuthenticated: return NSFileProviderError(.notAuthenticated)
+    case .quota: return NSFileProviderError(.insufficientQuota)
+    case .collision: return NSFileProviderError(.filenameCollision)
+    case .other:
+        return NSError(
+            domain: NSCocoaErrorDomain, code: NSXPCConnectionReplyInvalid,
+            userInfo: [NSUnderlyingErrorKey: error])
     }
 }

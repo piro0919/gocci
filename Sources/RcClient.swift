@@ -13,7 +13,90 @@ struct RcClient {
 
     enum Failure: Error {
         case noAnswer
-        case rejected(String)
+        /// rclone が断ってきた。`status` は rcd が返した HTTP の番号で、分からなければ 0
+        case rejected(String, status: Int = 0)
+    }
+
+    /// 失敗の種類。File Provider へ返す誤りを選ぶのに使う。
+    ///
+    /// rcd は失敗を `{"error": "…", "status": 404}` の形で返す。番号が分けてくれるのは
+    /// 「無い」（404）と引数の誤り（400）だけで、残りは 500 にまとめられ、Drive が何と
+    /// 言ったかは文の中にしか無い（2026-10-01、local の置き場で実測）。なので文で見分ける
+    enum FailureKind: Equatable {
+        /// 手元の rcd まで届かない。繋がり直せば済む
+        case network
+        case notFound
+        /// Drive の合鍵が切れた。繋ぎ直しが要る
+        case notAuthenticated
+        case quota
+        case collision
+        case other
+    }
+
+    static func classify(_ error: Error) -> FailureKind {
+        if (error as NSError).domain == NSURLErrorDomain { return .network }
+        guard let failure = error as? Failure else { return .other }
+        guard case .rejected(let reason, let status) = failure else { return .network }
+
+        // rcd 自身の合言葉が合わない。控えが古いだけで、Drive の合鍵とは関係ない
+        if status == 401 { return .network }
+        if status == 404 { return .notFound }
+
+        let text = reason.lowercased()
+        let says = { (needles: [String]) in needles.contains { text.contains($0) } }
+
+        if says([
+            "invalid_grant", "couldn't fetch token", "token expired", "oauth2:",
+            "invalid authentication credentials", "error 401", "unauthenticated",
+        ]) {
+            return .notAuthenticated
+        }
+        // `userRateLimitExceeded` は回数の上限で、容量とは別。待てば通る
+        if says(["storagequotaexceeded", "quota has been exceeded", "quotaexceeded"]),
+            !says(["ratelimitexceeded"])
+        {
+            return .quota
+        }
+        if says(["already exists"]) { return .collision }
+        if says(["not found", "no such file or directory"]) { return .notFound }
+        return .other
+    }
+
+    // MARK: - 版と衝突
+
+    /// 中身の版。大きさと秒で丸めた更新時刻から作る。
+    ///
+    /// 小数のまま文字にすると、控えに書いて読み直すたびに揺れて、変わっていないものまで
+    /// 「変わった」と伝えることになる（2026-08-16 実測。1件しか変えていないのに 1159 件を
+    /// 更新と数えた）
+    static func signature(bytes: Int64, modified: Date) -> String {
+        "\(bytes)-\(Int(modified.timeIntervalSince1970))"
+    }
+
+    /// 手元が元にした版と、Drive の今の版が食い違っているか。
+    ///
+    /// 食い違っていれば、手元が知らないうちに別の端末で書き換えられている。
+    /// Drive に無いもの、元にした版がこちらの作った形でないもの（初めての同期で
+    /// macOS が埋めてくる値など）は、比べようがないので食い違いとはしない
+    static func hasConflict(base: Data, current: Entry?) -> Bool {
+        guard let current, !current.isDirectory,
+            let text = String(data: base, encoding: .utf8),
+            text.range(of: #"^-?\d+-\d+$"#, options: .regularExpression) != nil
+        else { return false }
+        return text != signature(bytes: current.size, modified: current.modified)
+    }
+
+    /// 衝突したときに、手元の中身を逃がす先の名前。`報告書 (conflict 2026-10-01 140058).pdf`
+    static func conflictName(for name: String, at date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd HHmmss"
+        let stamp = formatter.string(from: date)
+        let suffix = (name as NSString).pathExtension
+        let stem = (name as NSString).deletingPathExtension
+        // `.zshrc` のような名前は、全体が拡張子に見えて幹が空になる
+        guard !suffix.isEmpty, !stem.isEmpty else { return "\(name) (conflict \(stamp))" }
+        return "\(stem) (conflict \(stamp)).\(suffix)"
     }
 
     /// Drive の一件ぶん。返ってくる形は rclone が決めている
@@ -249,27 +332,71 @@ struct RcClient {
         request.httpBody = body
         request.timeoutInterval = 600
 
-        URLSession.shared.dataTask(with: request) { _, response, error in
+        URLSession.shared.dataTask(with: request) { data, response, error in
             if let error { return completion(.failure(error)) }
             guard let status = (response as? HTTPURLResponse)?.statusCode, status < 400 else {
-                return completion(.failure(Failure.rejected("上げられませんでした")))
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]
+                let reason = (json?["error"] as? String) ?? "上げられませんでした"
+                return completion(.failure(Failure.rejected(reason, status: code)))
             }
             completion(.success(()))
         }.resume()
     }
 
-    /// ファイルを動かす。名前を変えるのも、これで同じこと
-    func moveFile(
-        from source: String, to destination: String,
+    /// 動かす。名前を変えるのも、これで同じこと
+    func move(
+        from source: String, to destination: String, isDirectory: Bool,
         completion: @escaping @Sendable (Result<Void, Error>) -> Void
     ) {
-        call(
+        let request = Self.moveRequest(
+            remote: connection.remote, from: source, to: destination, isDirectory: isDirectory)
+        call(request.route, request.body) { completion($0.map { _ in () }) }
+    }
+
+    /// 動かすときの頼み方。
+    ///
+    /// `operations/movefile` はファイル専用で、フォルダを渡すと `is a directory not a file`
+    /// で断られる。フォルダは `sync/move` に置き場ごと渡す。Drive のようにフォルダごと
+    /// 動かせる相手なら、中身を一つずつ運ばずに一度で済み、Drive 側の ID も変わらない
+    /// （どちらも 2026-10-01、rclone 1.75.0 と local の置き場で実測）。
+    ///
+    /// `sync/move` は行き先が既にあると黙って混ぜる。そこは呼ぶ側が先に確かめる
+    static func moveRequest(
+        remote: String, from source: String, to destination: String, isDirectory: Bool
+    ) -> (route: String, body: [String: Any]) {
+        if isDirectory {
+            return (
+                "sync/move",
+                [
+                    "srcFs": remote + source, "dstFs": remote + destination,
+                    "deleteEmptySrcDirs": true,
+                ]
+            )
+        }
+        return (
             "operations/movefile",
             [
-                "srcFs": connection.remote, "srcRemote": source,
-                "dstFs": connection.remote, "dstRemote": destination,
+                "srcFs": remote, "srcRemote": source,
+                "dstFs": remote, "dstRemote": destination,
             ]
-        ) { completion($0.map { _ in () }) }
+        )
+    }
+
+    /// 一件の今の姿。無ければ nil。
+    ///
+    /// rcd は無いものを訊かれても失敗にせず、`{"item": null}` を返す（2026-10-01 実測）
+    func stat(_ path: String, completion: @escaping @Sendable (Result<Entry?, Error>) -> Void) {
+        call("operations/stat", ["fs": connection.remote, "remote": path]) { result in
+            completion(result.map { json in (json["item"] as? [String: Any]).flatMap(Self.entry(from:)) })
+        }
+    }
+
+    /// 空のフォルダを消す。中身が残っていれば断られる
+    func removeDirectory(path: String, completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
+        call("operations/rmdir", ["fs": connection.remote, "remote": path]) {
+            completion($0.map { _ in () })
+        }
     }
 
     /// ファイルを1つ消す
@@ -332,7 +459,7 @@ struct RcClient {
             let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
             if let status = (response as? HTTPURLResponse)?.statusCode, status >= 400 {
                 let reason = (json["error"] as? String) ?? "rclone が \(status) を返しました"
-                return completion(.failure(Failure.rejected(reason)))
+                return completion(.failure(Failure.rejected(reason, status: status)))
             }
             completion(.success(json))
         }.resume()
