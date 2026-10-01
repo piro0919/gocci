@@ -100,10 +100,25 @@ Drive reports against what it last saw. Files added from another machine appear
 without reopening the folder. Only folders you have looked at recently are
 checked; anywhere else is refreshed when you open it.
 
+Edits never overwrite a change made elsewhere. Before saving a file, the extension
+checks that Drive still holds the version it was edited from — same size and the
+same modification time to the second. If not, your copy is uploaded beside it as
+`name (conflict 2026-10-01 140058).ext` and the original takes Drive's version.
+Deleting a file that changed elsewhere is refused, and it comes back with the newer
+contents. Folders are not compared, since Drive moves a folder's time when its
+contents change. Creating or renaming onto a name that already exists in Drive is refused, and
+macOS picks another name.
+
+If the bundled rclone stops on its own, the extension is told the Drive is
+unreachable. Gocci restarts it once if it had been running for at least a minute;
+otherwise the menu shows the error and **Connect** starts it again.
+
 ## Build
 
 Xcode is not required — the Swift that ships with the Command Line Tools is
-enough. rclone and Sparkle are fetched into `Vendor/` on the first build.
+enough. rclone and Sparkle are fetched into `Vendor/` on the first build, and the
+build stops if either archive's SHA-256 differs from the value pinned in `build.sh`.
+rclone's value is also checked against its published `SHA256SUMS`.
 
 ```bash
 ./build.sh
