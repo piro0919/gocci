@@ -12,7 +12,24 @@ VERSION="${GOCCI_VERSION:-0.0.0}"
 # NFS マウントは rclone 側が Experimental と明記している機能なので、検証した版で固定する。
 # 上げるときは手元でマウント・読み書き・アンマウントを確かめてから
 RCLONE_VERSION="1.75.0"
+# 取ってきた書庫を確かめる値。版を上げたら一緒に差し替える。
+# rclone は downloads.rclone.org/v<版>/SHA256SUMS の osx-arm64.zip の行、
+# Sparkle は GitHub Releases の asset に載っている digest と同じもの:
+#   gh api repos/sparkle-project/Sparkle/releases/tags/<版> --jq '.assets[] | "\(.name) \(.digest)"'
+RCLONE_SHA256="35e8f2a666ce789b29111db0dd843ddabc0d59c6b609d07bcaae5d1a07cba6f8"
 SPARKLE_VERSION="2.9.5"
+SPARKLE_SHA256="015336b601493e05c237964954bff6191370003d94edefe663724c88840d73cc"
+
+# 中身を検めずに同梱すると、差し替えられたものがそのまま配布物に入る
+verify_sha256() {
+  local file="$1" expected="$2" label="$3"
+  if ! echo "${expected}  ${file}" | shasum -a 256 -c - >/dev/null; then
+    echo "エラー: ${label} の SHA-256 が一致しません。" >&2
+    echo "        期待値: ${expected}" >&2
+    echo "        実際:   $(shasum -a 256 "$file" | cut -d' ' -f1)" >&2
+    return 1
+  fi
+}
 
 # 自動更新に Sparkle を使う。framework は大きいのでリポジトリに置かず、
 # 無ければ取ってくる（Vendor/ は git の管理外）
@@ -20,8 +37,9 @@ if [ ! -d "Vendor/Sparkle.framework" ]; then
   echo "Sparkle $SPARKLE_VERSION を取得します…"
   mkdir -p Vendor
   TMP="$(mktemp -d)"
-  curl -sL -o "$TMP/sparkle.tar.xz" \
+  curl -fsSL -o "$TMP/sparkle.tar.xz" \
     "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+  verify_sha256 "$TMP/sparkle.tar.xz" "$SPARKLE_SHA256" "Sparkle ${SPARKLE_VERSION}" || { rm -rf "$TMP"; exit 1; }
   tar xf "$TMP/sparkle.tar.xz" -C "$TMP"
   cp -R "$TMP/Sparkle.framework" Vendor/
   cp -R "$TMP/bin" Vendor/
@@ -34,8 +52,18 @@ if [ ! -x "Vendor/rclone" ]; then
   echo "rclone $RCLONE_VERSION を取得します…"
   mkdir -p Vendor
   TMP="$(mktemp -d)"
-  curl -sL -o "$TMP/rclone.zip" \
-    "https://downloads.rclone.org/v${RCLONE_VERSION}/rclone-v${RCLONE_VERSION}-osx-arm64.zip"
+  RCLONE_ZIP="rclone-v${RCLONE_VERSION}-osx-arm64.zip"
+  curl -fsSL -o "$TMP/rclone.zip" "https://downloads.rclone.org/v${RCLONE_VERSION}/${RCLONE_ZIP}"
+  # rclone が公開している一覧とも突き合わせる。上の固定値を書き写し間違えていても、
+  # 版を上げて値を直し忘れていても、ここで止まる
+  curl -fsSL -o "$TMP/SHA256SUMS" "https://downloads.rclone.org/v${RCLONE_VERSION}/SHA256SUMS"
+  PUBLISHED="$(awk -v name="$RCLONE_ZIP" '$2 == name { print $1 }' "$TMP/SHA256SUMS")"
+  if [ "$PUBLISHED" != "$RCLONE_SHA256" ]; then
+    echo "エラー: ${RCLONE_ZIP} の固定値が SHA256SUMS と一致しません（公開: ${PUBLISHED:-行が無い}）。" >&2
+    rm -rf "$TMP"
+    exit 1
+  fi
+  verify_sha256 "$TMP/rclone.zip" "$RCLONE_SHA256" "rclone ${RCLONE_VERSION}" || { rm -rf "$TMP"; exit 1; }
   unzip -q "$TMP/rclone.zip" -d "$TMP"
   cp "$TMP/rclone-v${RCLONE_VERSION}-osx-arm64/rclone" Vendor/rclone
   chmod +x Vendor/rclone
