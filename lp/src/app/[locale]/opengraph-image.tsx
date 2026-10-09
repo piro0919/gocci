@@ -65,10 +65,23 @@ export default async function Image({ params }: Props) {
           >
             Gocci
           </div>
-          <div style={{ color: TEAL, display: "flex", fontSize: 36, marginTop: 16 }}>
-            {isJa
-              ? "Google ドライブを Finder に繋ぐ。"
-              : "Google Drive in Finder."}
+          {/* 日本語は1行だと題名より大きく右へはみ出し、その軽さで全体が左に寄って見えるので2行に折る */}
+          <div
+            style={{
+              color: TEAL,
+              display: "flex",
+              flexDirection: "column",
+              fontSize: 36,
+              lineHeight: 1.4,
+              marginTop: 16,
+            }}
+          >
+            {(isJa
+              ? ["Google ドライブを", "Finder に繋ぐ。"]
+              : ["Google Drive in Finder."]
+            ).map((line) => (
+              <div key={line}>{line}</div>
+            ))}
           </div>
         </div>
       </div>
