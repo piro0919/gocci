@@ -33,59 +33,55 @@ export default async function Image({ params }: Props) {
   const iconSrc = `data:image/png;base64,${icon.toString("base64")}`;
 
   return new ImageResponse(
-    (
-      <div
-        style={{
-          alignItems: "center",
-          backgroundColor: FIELD,
-          // 本体と同じ方眼
-          backgroundImage:
-            "linear-gradient(rgba(232,241,248,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(232,241,248,0.05) 1px, transparent 1px), linear-gradient(rgba(232,241,248,0.09) 1px, transparent 1px), linear-gradient(90deg, rgba(232,241,248,0.09) 1px, transparent 1px)",
-          backgroundSize: "24px 24px, 24px 24px, 120px 120px, 120px 120px",
-          color: PAPER,
-          display: "flex",
-          gap: 56,
-          height: "100%",
-          justifyContent: "center",
-          width: "100%",
-        }}
-      >
-        <img alt="" height={230} src={iconSrc} width={230} />
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          <div style={{ color: MUTED, display: "flex", fontSize: 24 }}>
-            macOS 14+ / Apple silicon
-          </div>
-          <div
-            style={{
-              display: "flex",
-              fontSize: 108,
-              letterSpacing: -4,
-              marginTop: 14,
-            }}
-          >
-            Gocci
-          </div>
-          {/* 日本語は1行だと題名より大きく右へはみ出し、その軽さで全体が左に寄って見えるので2行に折る */}
-          <div
-            style={{
-              color: TEAL,
-              display: "flex",
-              flexDirection: "column",
-              fontSize: 36,
-              lineHeight: 1.4,
-              marginTop: 16,
-            }}
-          >
-            {(isJa
-              ? ["Google ドライブを", "Finder に繋ぐ。"]
-              : ["Google Drive in Finder."]
-            ).map((line) => (
+    <div
+      style={{
+        alignItems: "center",
+        backgroundColor: FIELD,
+        // 本体と同じ方眼
+        backgroundImage:
+          "linear-gradient(rgba(232,241,248,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(232,241,248,0.05) 1px, transparent 1px), linear-gradient(rgba(232,241,248,0.09) 1px, transparent 1px), linear-gradient(90deg, rgba(232,241,248,0.09) 1px, transparent 1px)",
+        backgroundSize: "24px 24px, 24px 24px, 120px 120px, 120px 120px",
+        color: PAPER,
+        display: "flex",
+        gap: 56,
+        height: "100%",
+        justifyContent: "center",
+        width: "100%",
+      }}
+    >
+      {/* biome-ignore lint/performance/noImgElement: next/image is not available in ImageResponse */}
+      <img alt="" height={230} src={iconSrc} width={230} />
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <div style={{ color: MUTED, display: "flex", fontSize: 24 }}>macOS 14+ / Apple silicon</div>
+        <div
+          style={{
+            display: "flex",
+            fontSize: 108,
+            letterSpacing: -4,
+            marginTop: 14,
+          }}
+        >
+          Gocci
+        </div>
+        {/* 日本語は1行だと題名より大きく右へはみ出し、その軽さで全体が左に寄って見えるので2行に折る */}
+        <div
+          style={{
+            color: TEAL,
+            display: "flex",
+            flexDirection: "column",
+            fontSize: 36,
+            lineHeight: 1.4,
+            marginTop: 16,
+          }}
+        >
+          {(isJa ? ["Google ドライブを", "Finder に繋ぐ。"] : ["Google Drive in Finder."]).map(
+            (line) => (
               <div key={line}>{line}</div>
-            ))}
-          </div>
+            ),
+          )}
         </div>
       </div>
-    ),
+    </div>,
     {
       ...size,
       fonts: [{ data: font, name: "M PLUS 2", style: "normal", weight: 500 }],

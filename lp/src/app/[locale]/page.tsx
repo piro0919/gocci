@@ -28,15 +28,11 @@ export default async function Page({ params }: PageProps) {
 
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center gap-14 px-6 py-14 lg:flex-row lg:items-center lg:gap-16 lg:py-20">
         <div className="min-w-0 lg:flex-1">
-          <span className="font-mono text-muted text-xs tracking-wider">
-            {t("hero.badge")}
-          </span>
+          <span className="font-mono text-muted text-xs tracking-wider">{t("hero.badge")}</span>
           <h1 className="mt-6 whitespace-pre-line font-display font-bold text-4xl leading-[1.15] tracking-tight sm:text-5xl">
             {t("hero.title")}
           </h1>
-          <p className="mt-6 max-w-md text-lg text-muted leading-relaxed">
-            {t("hero.tagline")}
-          </p>
+          <p className="mt-6 max-w-md text-lg text-muted leading-relaxed">{t("hero.tagline")}</p>
 
           <div className="mt-10 flex flex-col gap-3 sm:flex-row">
             <a
@@ -75,10 +71,7 @@ export default async function Page({ params }: PageProps) {
             {t("footer.source")}
           </a>
           <span className="px-3">·</span>
-          <Link
-            className="cursor-pointer font-bold hover:text-text"
-            href="/privacy"
-          >
+          <Link className="cursor-pointer font-bold hover:text-text" href="/privacy">
             {t("footer.privacy")}
           </Link>
         </div>

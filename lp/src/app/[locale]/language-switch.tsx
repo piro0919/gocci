@@ -14,9 +14,7 @@ export function LanguageSwitch() {
       {(["en", "ja"] as const).map((target) => (
         <Link
           className={`cursor-pointer rounded-full px-3 py-1 font-bold transition ${
-            locale === target
-              ? "bg-teal text-ink"
-              : "text-muted hover:text-text"
+            locale === target ? "bg-teal text-ink" : "text-muted hover:text-text"
           }`}
           href={pathname}
           key={target}

@@ -9,8 +9,7 @@ type Props = {
   flowTop: string;
 };
 
-const LABEL =
-  "ui-monospace, SFMono-Regular, Menlo, monospace";
+const LABEL = "ui-monospace, SFMono-Regular, Menlo, monospace";
 
 /**
  * ファイルがどこに置かれるかの図。スクリーンショットが無いアプリなので、
@@ -84,9 +83,7 @@ export function FlowDiagram({
           </text>
         </g>
       </svg>
-      <figcaption className="mt-5 font-mono text-muted text-xs">
-        {caption}
-      </figcaption>
+      <figcaption className="mt-5 font-mono text-muted text-xs">{caption}</figcaption>
     </figure>
   );
 }
