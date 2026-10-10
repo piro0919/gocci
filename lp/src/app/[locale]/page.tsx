@@ -74,6 +74,13 @@ export default async function Page({ params }: PageProps) {
           <Link className="cursor-pointer font-bold hover:text-text" href="/privacy">
             {t("footer.privacy")}
           </Link>
+          <span className="px-3">·</span>
+          <a
+            className="cursor-pointer font-bold hover:text-text"
+            href="https://buymeacoffee.com/piro0919"
+          >
+            Buy Me a Coffee
+          </a>
         </div>
       </footer>
     </div>
