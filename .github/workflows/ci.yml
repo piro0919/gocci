@@ -11,9 +11,9 @@ jobs:
   ci:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Sparkle は build.sh が無ければ取ってくる。毎回取らずに済ませる。
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: Vendor
           key: ${{ runner.os }}-vendor-${{ hashFiles('build.sh') }}
