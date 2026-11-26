@@ -137,6 +137,10 @@ final class Ledger: @unchecked Sendable {
     private var entries: [String: Item] = [:]
     /// 消したもの。混ぜるときに蘇らせないための覚え
     private var forgotten = Set<String>()
+    /// この拡張が変えたもの。書き出すのはこれだけ。値は変えた回の番号で、
+    /// 書き出している最中にまた変わったものを、書き終えたからといって外さないのに使う
+    private var dirty: [String: Int] = [:]
+    private var generation = 0
     private let lock = NSLock()
 
     private var url: URL? {
@@ -162,8 +166,19 @@ final class Ledger: @unchecked Sendable {
     /// 250MB の読み書きが走り、拡張が CPU を占め続けた（2026-09-14 実測）
     func remember(_ item: Item) {
         lock.lock()
-        entries[item.itemIdentifier.rawValue] = item
+        let id = item.itemIdentifier.rawValue
+        entries[id] = item
+        // 一度忘れた ID でも、覚え直したなら書き出す。忘れた覚えが残っていると、
+        // 書き出すたびに落とされて、次に起きた拡張からは見えなくなる
+        forgotten.remove(id)
+        markDirty(id)
         lock.unlock()
+    }
+
+    /// `lock` の内側で呼ぶ
+    private func markDirty(_ id: String) {
+        generation += 1
+        dirty[id] = generation
     }
 
     /// 覚えたぶんを控えに書き出す。覚えた回数ではなく、ひと区切りごとに呼ぶ
@@ -241,15 +256,75 @@ final class Ledger: @unchecked Sendable {
             entries[id] = Item(
                 id: id, path: new + "/" + item.path.dropFirst(prefix.count),
                 isDirectory: item.isDirectory, bytes: item.bytes, modified: item.modified)
+            markDirty(id)
         }
+        listedAt = LedgerRules.rebaseKeys(listedAt, from: old, to: new)
+        needsRepair = true
     }
 
     /// 消えたものを忘れる。残しておくと、次に同じ ID を訊かれたときに嘘を返す
     func forget(_ identifier: NSFileProviderItemIdentifier) {
         lock.lock()
+        if entries[identifier.rawValue]?.isDirectory == true { needsRepair = true }
         entries.removeValue(forKey: identifier.rawValue)
         forgotten.insert(identifier.rawValue)
+        dirty.removeValue(forKey: identifier.rawValue)
         lock.unlock()
+    }
+
+    /// 見て回って一覧に無かったものを忘れる。忘れたものだけを返す。
+    ///
+    /// 一覧を待つあいだに動かされたものは、もう新しい道で覚え直されているので残す。
+    /// 判断は `LedgerRules.isGone`
+    func forgetMissing(_ items: [Item]) -> [Item] {
+        lock.lock()
+        defer { lock.unlock() }
+        return items.filter { item in
+            let id = item.itemIdentifier.rawValue
+            guard LedgerRules.isGone(rememberedPath: item.path, currentPath: entries[id]?.path)
+            else { return false }
+            entries.removeValue(forKey: id)
+            forgotten.insert(id)
+            dirty.removeValue(forKey: id)
+            // フォルダを忘れたら、その中の覚えは親を辿れなくなる
+            if item.isDirectory { needsRepair = true }
+            return true
+        }
+    }
+
+    /// 親の辿れない覚えを探す必要があるか。起きたときと、忘れたり付け替えたりしたあとだけ。
+    ///
+    /// 29万件を見るのに 0.2 秒ほどかかる。1分ごとに見て回るたびには払わない
+    private var needsRepair = true
+
+    /// 辿るのが途切れた道のうち、Drive に確かめに行くもの。探す必要が無ければ空。
+    /// 無いと確かめ終えた道は、もう訊かない
+    func gapsToCheck(limit: Int, excluding settled: Set<String>) -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        guard needsRepair else { return [] }
+        let missing = LedgerRules.orphans(entries.mapValues(\.path)).missing.subtracting(settled)
+        return LedgerRules.pick(missing, limit: limit)
+    }
+
+    /// 途切れた道が Drive に無いと確かめられたものだけを忘れ、その識別子を返す。
+    ///
+    /// そういうものは `parentItemIdentifier` が根を返すので、Finder の直下に散らばって見える。
+    /// macOS には消えたと伝える。確かめられなかった途切れの下は残し、次の見回りでまた探す
+    func forgetOrphans(under gone: Set<String>) -> [NSFileProviderItemIdentifier] {
+        lock.lock()
+        defer { lock.unlock() }
+        guard needsRepair else { return [] }
+        let gaps = LedgerRules.orphanGaps(entries.mapValues(\.path))
+        let lost = gaps.filter { gone.contains($0.value) }.keys
+        for id in lost {
+            entries.removeValue(forKey: id)
+            forgotten.insert(id)
+            dirty.removeValue(forKey: id)
+        }
+        // まだ辿れないものが残っていれば、次の見回りでも探す
+        needsRepair = gaps.count != lost.count
+        return lost.map { NSFileProviderItemIdentifier($0) }
     }
 
     // MARK: - 手元に残す
@@ -261,21 +336,33 @@ final class Ledger: @unchecked Sendable {
     /// Finder から見えなくなった。Drive には残っているのに消えたように見える
     /// （2026-08-16 実測）。
     ///
-    /// 消すときは `forget` が明示的に落とすので、混ぜても消えたものが蘇ることはない
+    /// 消すときは `forget` が明示的に落とすので、混ぜても消えたものが蘇ることはない。
+    ///
+    /// 重ねるのは、この拡張が変えたものだけ。混ぜ方は `LedgerRules.merge`
     private func save() {
         guard let url else { return }
 
         lock.lock()
-        let mine = entries.mapValues(Record.init)
+        let written = dirty
+        var mine: [String: Record] = [:]
+        for id in written.keys {
+            if let item = entries[id] { mine[id] = Record(item) }
+        }
         let dropped = forgotten
         lock.unlock()
 
-        var merged = diskContents()
-        for (id, value) in mine { merged[id] = value }
-        for id in dropped { merged.removeValue(forKey: id) }
+        guard !mine.isEmpty || !dropped.isEmpty else { return }
 
-        guard let data = try? JSONEncoder().encode(merged) else { return }
-        try? data.write(to: url, options: .atomic)
+        let merged = LedgerRules.merge(disk: diskContents(), mine: mine, dropped: dropped)
+        guard let data = try? JSONEncoder().encode(merged),
+            (try? data.write(to: url, options: .atomic)) != nil
+        else { return }
+
+        // 書き終えたぶんを外す。書いている最中にまた変わったものは、次の回に書く
+        lock.lock()
+        for (id, stamp) in written where dirty[id] == stamp { dirty.removeValue(forKey: id) }
+        forgotten.subtract(dropped)
+        lock.unlock()
     }
 
     /// 控えの1件ぶん。ディスクに置く形は今までと同じ。
@@ -434,8 +521,8 @@ final class Enumerator: NSObject, NSFileProviderEnumerator {
                     mine.append(item)
                 }
 
-                let missing = remembered.filter { !seen.contains($0.itemIdentifier.rawValue) }
-                for item in missing { Ledger.shared.forget(item.itemIdentifier) }
+                let missing = Ledger.shared.forgetMissing(
+                    remembered.filter { !seen.contains($0.itemIdentifier.rawValue) })
                 Ledger.shared.flush()
 
                 harvest.add(changed: mine, gone: missing.map(\.itemIdentifier))
@@ -443,15 +530,20 @@ final class Enumerator: NSObject, NSFileProviderEnumerator {
         }
 
         group.notify(queue: .global()) {
-            let (changed, gone) = harvest.result
-            if !changed.isEmpty { observer.didUpdate(changed) }
-            if !gone.isEmpty { observer.didDeleteItems(withIdentifiers: gone) }
-            if !changed.isEmpty || !gone.isEmpty {
-                logger.info("見て回った: 更新 \(changed.count) / 消えた \(gone.count)")
+            // 見て回ったついでに、親の辿れない覚えを治す。治らないものは消えたと伝える
+            repairLedger(client: client) { healed, orphans in
+                let (found, missing) = harvest.result
+                let changed = found + healed
+                let gone = missing + orphans
+                if !changed.isEmpty { observer.didUpdate(changed) }
+                if !gone.isEmpty { observer.didDeleteItems(withIdentifiers: gone) }
+                if !changed.isEmpty || !gone.isEmpty {
+                    logger.info("見て回った: 更新 \(changed.count) / 消えた \(gone.count)")
+                }
+                observer.finishEnumeratingChanges(
+                    upTo: NSFileProviderSyncAnchor(Data(String(Date().timeIntervalSince1970).utf8)),
+                    moreComing: false)
             }
-            observer.finishEnumeratingChanges(
-                upTo: NSFileProviderSyncAnchor(Data(String(Date().timeIntervalSince1970).utf8)),
-                moreComing: false)
         }
     }
 
@@ -505,8 +597,8 @@ final class Enumerator: NSObject, NSFileProviderEnumerator {
                 changed.append(item)
             }
 
-            let gone = remembered.filter { !seen.contains($0.itemIdentifier.rawValue) }
-            for item in gone { Ledger.shared.forget(item.itemIdentifier) }
+            let gone = Ledger.shared.forgetMissing(
+                remembered.filter { !seen.contains($0.itemIdentifier.rawValue) })
             Ledger.shared.flush()
 
             if !changed.isEmpty { observer.didUpdate(changed) }
@@ -861,7 +953,13 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
                         // フォルダごと動かせない相手だと、中身を運んだあとに空の
                         // 元フォルダが残る。消せなければそれまで（中身が残っているなど）
                         guard isDirectory else { return settle() }
-                        client.removeDirectory(path: path) { _ in settle() }
+                        // rclone は古い道を、動かした先のフォルダとして覚えたままでいる。
+                        // 捨てずに消しに行くと、動かした先の空のフォルダを消しかねない
+                        // （2026-11-27 実測。動かした数分後も古い道で一覧が通った）
+                        client.clearCache { cleared in
+                            guard cleared else { return settle() }
+                            client.removeDirectory(path: path) { _ in settle() }
+                        }
                     }
                 }
             }
@@ -1311,6 +1409,82 @@ extension GocciFileProvider: NSFileProviderThumbnailing {
         CGImageDestinationAddImage(target, image, nil)
         guard CGImageDestinationFinalize(target) else { return nil }
         return data as Data
+    }
+}
+
+/// 親の辿れない覚えを治す。
+///
+/// 辿るのが途切れた道を Drive に確かめ、あればフォルダとして覚え直す。治すと一段上で
+/// また途切れていることがあるので、数回まで繰り返す。Drive に無いと分かった道の下だけを
+/// 忘れて返す。訊けなかった道（Drive が混んで断った、数の上限を超えた）の下は残す。
+/// フォルダを動かしたあと、動かした先のフォルダだけが台帳から落ちていた。中身の道は
+/// 正しいので、忘れて伝え直すより、親を覚え直すほうが Finder の見た目を崩さない
+/// （2026-11-27 実測。落ちたのは7件、その下の正しい覚えは 13 万件）
+func repairLedger(
+    client: RcClient, round: Int = 0, gone: Set<String> = [],
+    completion: @escaping @Sendable (_ healed: [Item], _ orphans: [NSFileProviderItemIdentifier]) -> Void
+) {
+    let gaps = round < 4 ? Ledger.shared.gapsToCheck(limit: 50, excluding: gone) : []
+    guard !gaps.isEmpty else {
+        let orphans = Ledger.shared.forgetOrphans(under: gone)
+        if !orphans.isEmpty {
+            Ledger.shared.flush()
+            logger.info("親の辿れない覚えを片付けた: \(orphans.count) 件")
+        }
+        return completion([], orphans)
+    }
+
+    let group = DispatchGroup()
+    let healed = Harvest()
+    let absent = Gaps()
+    for gap in gaps {
+        group.enter()
+        client.stat(gap) { result in
+            defer { group.leave() }
+            switch result {
+            case .success(let entry?) where entry.isDirectory:
+                let item = Item(id: entry.id, path: gap, entry: entry)
+                Ledger.shared.remember(item)
+                healed.add(changed: [item], gone: [])
+            case .success:
+                // 無い、あるいはフォルダではない。その下の覚えは古い道のまま残ったもの
+                absent.add(gap)
+            case .failure:
+                // 訊けなかった。無いとは限らないので、次の見回りでまた訊く
+                break
+            }
+        }
+    }
+    group.notify(queue: .global()) {
+        let found = healed.result.changed
+        let settled = gone.union(absent.all)
+        // 一つも答えが得られなければ、続けて訊いても同じ。次の見回りに回す
+        let next = found.isEmpty && settled == gone ? 4 : round + 1
+        if !found.isEmpty {
+            Ledger.shared.flush()
+            logger.info("途切れた親を覚え直した: \(found.count) 件")
+        }
+        repairLedger(client: client, round: next, gone: settled) { more, orphans in
+            completion(found + more, orphans)
+        }
+    }
+}
+
+/// Drive に無いと分かった道を、閉包から足し込むための箱
+private final class Gaps: @unchecked Sendable {
+    private let lock = NSLock()
+    private var paths = Set<String>()
+
+    func add(_ path: String) {
+        lock.lock()
+        paths.insert(path)
+        lock.unlock()
+    }
+
+    var all: Set<String> {
+        lock.lock()
+        defer { lock.unlock() }
+        return paths
     }
 }
 

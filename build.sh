@@ -91,7 +91,7 @@ swiftc \
   Sources/Rclone.swift Sources/RcloneConfig.swift Sources/Rc.swift \
   Sources/Mark.swift Sources/Icon.swift Sources/Updater.swift \
   Sources/RcEndpoint.swift Sources/RcClient.swift Sources/Provider.swift \
-  Sources/Materialized.swift Sources/SelfTest.swift \
+  Sources/Materialized.swift Sources/LedgerRules.swift Sources/SelfTest.swift \
   Sources/SettingsWindow.swift Sources/main.swift
 
 # Drive を「クラウドのフォルダ」として見せる拡張。
@@ -107,7 +107,8 @@ swiftc \
   -framework FileProvider \
   -Xlinker -e -Xlinker _NSExtensionMain \
   -o "$FP/Contents/MacOS/GocciFileProvider" \
-  Sources/RcEndpoint.swift Sources/RcClient.swift Sources/FileProvider/main.swift
+  Sources/RcEndpoint.swift Sources/RcClient.swift Sources/LedgerRules.swift \
+  Sources/FileProvider/main.swift
 
 cat > "$FP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

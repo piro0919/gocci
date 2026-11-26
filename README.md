@@ -109,6 +109,12 @@ contents. Folders are not compared, since Drive moves a folder's time when its
 contents change. Creating or renaming onto a name that already exists in Drive is refused, and
 macOS picks another name.
 
+Moving or renaming a folder keeps everything inside it in place. Drive keeps the
+IDs of what it holds, so the extension only rewrites the paths it remembers, and
+the next look-around follows the folder to its new place. If the extension finds
+remembered entries whose parent folder it no longer knows, it asks Drive for that
+folder first and drops only what Drive no longer has.
+
 If the bundled rclone stops on its own, the extension is told the Drive is
 unreachable. Gocci restarts it once if it had been running for at least a minute;
 otherwise the menu shows the error and **Connect** starts it again.

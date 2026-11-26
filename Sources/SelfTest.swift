@@ -200,6 +200,84 @@ enum SelfTest {
                 "拡張子は最後の一つだけ")
         }
 
+        // 台帳。フォルダを動かしたあとに中身が Finder の直下へ散らばった（2026-11-27）
+        do {
+            // 一覧を待つあいだに動かされたものは、消えたことにしない
+            check(
+                LedgerRules.isGone(rememberedPath: "Repository", currentPath: "Repository"),
+                "道が変わっていなければ消えたとみなす")
+            check(
+                !LedgerRules.isGone(
+                    rememberedPath: "Repository", currentPath: "Development/Repository"),
+                "一覧を待つあいだに動かされたものは忘れない")
+            check(
+                LedgerRules.isGone(rememberedPath: "Repository", currentPath: nil),
+                "もう覚えていないものは消えたとみなす")
+
+            // 親を辿って根まで行けないものだけを拾う
+            let paths = [
+                "dev": "Development",
+                "repo": "Development/Repository",
+                "pkg": "Development/Repository/app/package.json",  // 親の app が無い
+                "lib": "Extension/commit-type/node_modules/glob",  // 古い道のまま残った
+                "lic": "Extension/commit-type/node_modules/glob/LICENSE",
+                "top": "Movies",
+                "deep": "Development/Repository/readme.md",
+            ]
+            let (lost, missing) = LedgerRules.orphans(paths)
+            check(lost == ["pkg", "lib", "lic"], "親の辿れないものを拾う")
+            check(!lost.contains("top"), "直下のものは親が要らない")
+            check(!lost.contains("deep"), "親を辿れるものは残す")
+            check(
+                missing == ["Development/Repository/app", "Extension/commit-type/node_modules"],
+                "途切れた親の道を、根に一番近い途切れで返す")
+            check(LedgerRules.orphans([:]).lost.isEmpty, "空の台帳からは何も拾わない")
+
+            // 片付けるのは、Drive に無いと確かめた途切れの下だけ
+            check(
+                LedgerRules.lost(paths, under: ["Extension/commit-type/node_modules"]) == ["lib", "lic"],
+                "無いと確かめた途切れの下だけを片付ける")
+            check(
+                LedgerRules.lost(paths, under: []).isEmpty,
+                "確かめられなかった途切れの下は残す")
+
+            // 動かした先のフォルダだけが落ちた形。親を覚え直せば、中身は全部辿れる
+            var moved = [
+                "dev": "Development",
+                "a": "Development/Repository/app",
+                "b": "Development/Repository/app/package.json",
+            ]
+            check(
+                LedgerRules.orphans(moved).missing == ["Development/Repository"],
+                "落ちたのが動かした先のフォルダだけなら、そこを確かめに行く")
+            moved["repo"] = "Development/Repository"
+            check(LedgerRules.orphans(moved).lost.isEmpty, "親を覚え直せば片付けるものは無い")
+
+            check(LedgerRules.parent(of: "a/b/c.txt") == "a/b", "親の道を切り出す")
+            check(LedgerRules.parent(of: "c.txt") == "", "直下なら親は空")
+            check(
+                LedgerRules.pick(["a/b/c", "x", "a/b", "m/n"], limit: 3) == ["x", "a/b", "m/n"],
+                "浅い途切れから確かめに行く")
+
+            // 書き出すときは、自分が変えたものだけを重ねる
+            let disk = ["a": "Development/Repository", "b": "Movies", "c": "Comics"]
+            let merged = LedgerRules.merge(
+                disk: disk, mine: ["b": "Movies 2"], dropped: ["c"])
+            check(merged["a"] == "Development/Repository", "自分が触っていない覚えは書き戻さない")
+            check(merged["b"] == "Movies 2", "自分が変えたものは重ねる")
+            check(merged["c"] == nil, "忘れたものは落とす")
+
+            // 動かしたら、見て回る先も新しい道へ付け替える
+            let listed = ["": 1, "Repository": 2, "Repository/gocci": 3, "Repository2": 4]
+            let rebased = LedgerRules.rebaseKeys(listed, from: "Repository", to: "Development/Repository")
+            check(rebased["Repository"] == nil, "古い道は見て回る先に残さない")
+            check(rebased["Repository/gocci"] == nil, "古い道の中も残さない")
+            check(rebased["Development/Repository"] == 2, "動かしたフォルダ自身を付け替える")
+            check(rebased["Development/Repository/gocci"] == 3, "中のフォルダも付け替える")
+            check(rebased["Repository2"] == 4, "名前の頭が同じだけのものは触らない")
+            check(rebased[""] == 1, "根はそのまま")
+        }
+
         print(failures == 0 ? "全部通りました" : "\(failures) 件こけました")
         return failures == 0 ? 0 : 1
     }

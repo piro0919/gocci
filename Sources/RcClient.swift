@@ -392,6 +392,19 @@ struct RcClient {
         }
     }
 
+    /// rclone が覚えているフォルダの道を捨てる。
+    ///
+    /// フォルダを `sync/move` で動かすと、rclone は別に作った置き場で動かすので、
+    /// いつも使う置き場は古い道を動かした先のフォルダとして覚えたまま残る。
+    /// 古い道で一覧や消去が通ってしまう（2026-11-27、rclone 1.75.0 で実測）。
+    /// 捨てられたかどうかを返す。捨てられなかったときに古い道で消しに行くと、
+    /// 動かした先のフォルダを消しかねないので、呼ぶ側はそこで止める
+    func clearCache(completion: @escaping @Sendable (Bool) -> Void) {
+        call("fscache/clear", [:]) { result in
+            if case .success = result { completion(true) } else { completion(false) }
+        }
+    }
+
     /// 空のフォルダを消す。中身が残っていれば断られる
     func removeDirectory(path: String, completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
         call("operations/rmdir", ["fs": connection.remote, "remote": path]) {
