@@ -276,6 +276,17 @@ enum SelfTest {
             check(rebased["Development/Repository/gocci"] == 3, "中のフォルダも付け替える")
             check(rebased["Repository2"] == 4, "名前の頭が同じだけのものは触らない")
             check(rebased[""] == 1, "根はそのまま")
+
+            // 作ったものには、Drive に訊き直した ID を付ける
+            check(
+                LedgerRules.createdIdentifier(driveID: "1AXhR0lE", name: "sub", path: "x/sub") == "1AXhR0lE",
+                "作ったものには Drive の ID を付ける")
+            check(
+                LedgerRules.createdIdentifier(driveID: "sub", name: "sub", path: "x/sub") == "x/sub",
+                "ID が無く名前で代えられていたら道を借りる")
+            check(
+                LedgerRules.createdIdentifier(driveID: "", name: "sub", path: "x/sub") == "x/sub",
+                "ID が空なら道を借りる")
         }
 
         print(failures == 0 ? "全部通りました" : "\(failures) 件こけました")

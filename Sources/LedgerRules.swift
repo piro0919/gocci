@@ -140,4 +140,12 @@ enum LedgerRules {
         }
         return result
     }
+
+    /// 作ったものに付ける識別子。Drive の ID があればそれ、無ければ道を借りる。
+    ///
+    /// rclone の一件は、ID を返さない置き場だと ID の代わりに名前が入る
+    /// （`RcClient.entry(from:)`）。名前は同じフォルダの中でしか一意でないので、そのときは道にする
+    static func createdIdentifier(driveID: String, name: String, path: String) -> String {
+        driveID.isEmpty || driveID == name ? path : driveID
+    }
 }

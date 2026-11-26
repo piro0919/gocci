@@ -809,11 +809,16 @@ final class GocciFileProvider: NSObject, NSFileProviderReplicatedExtension {
         /// 秒がずれて、次に書き換えたときに別の端末で変えられたと見誤る
         let settle: @Sendable (Int64) -> Void = { bytes in
             client.stat(path) { result in
-                // 上げた直後は Drive の ID が分からない。道を借りておき、
-                // 次に並べ直したときに本物の ID へ入れ替わる
+                // ID は Drive に訊き直した答えから取る。道を仮の ID にすると、次に並べ直したときに
+                // 本物の ID へ入れ替わるが、macOS はそのあとも仮の ID で頼んでくる。
+                // すぐ動かすと「無い」と断ることになり、macOS は移動を元に戻して、中身を
+                // 「sub 2」のように改名した（2026-11-27 実測）。
+                // 訊き直せなかったときだけ道を借りる
                 let item: Item
                 if case .success(let entry?) = result {
-                    item = Item(id: path, path: path, entry: entry)
+                    item = Item(
+                        id: LedgerRules.createdIdentifier(driveID: entry.id, name: entry.name, path: path),
+                        path: path, entry: entry)
                 } else {
                     item = Item(
                         id: path, path: path, isDirectory: isDirectory, bytes: bytes,
